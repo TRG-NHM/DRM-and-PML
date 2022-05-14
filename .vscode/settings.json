@@ -1,0 +1,8 @@
+{
+    "python.autoComplete.extraPaths": [
+        "../HerculesDatabaseInquirySystem/"
+    ],
+    "python.analysis.extraPaths": [
+        "../HerculesDatabaseInquirySystem/"
+    ]
+}
