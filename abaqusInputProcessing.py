@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 import sys
+import csv
 sys.path.append('../HerculesDatabaseInquirySystem')
-from hdf5Search import getConvertedGridPoints, getInterpolatedHistoryDataForGridPoints
+from hdf5Search import getConvertedGridPoints, getInterpolatedHistoryDataForGridPoints, getDistanceFromPlaneOrigin
+from getMaterialProperties import getMaterialProperties
 
 def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName, cLoadFileName='Cload.txt'):
     density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(jobName, materialName)
@@ -10,22 +12,37 @@ def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName
     with open(jobName+'_pre.inp', 'r') as f:
         lines = f.readlines()
         dummyElementLine = getLineIndex(lines, '*Element, type=C3D8\n', isConversionNeeded=True)
-        # lines[dummyElementLine] = '*Element, type=U3, elset=UEL_All\n'
         lines[dummyElementLine] = '*Element, type=U3\n'
-        # TODO: how to calculate the number of or variables that are needed for User Element?
+        # [NOTE] Info for parameters under *USER ELEMENT:
+        #   TYPE: Must be 'Un' where n is a positive integer less than 10000, and it must be the same as the element type key used to identify this element on the *ELEMENT option.
+        #   NODE: Number of nodes associated with an element of this type.
+        #   COORDINATES: 3 for 3D, 2 for 2D.
+        #   PROPERTY: The number of property values needed as data in UEL to define such an element.
+        #   VARIABLES: 360 for 3D problems and 80 for 2D problems. This is determined by Wenyang's UEL subroutine.
+        #   [TODO (maybe?)] So how to calculate the number of or variables (VARIABLES) that are needed for *USER ELEMENT?
+        #   Numbers in the second line: The active DoF
         lines.insert(dummyElementLine, '*User Element, Type=U3, Nodes=8, Coordinates=3, Properties=12, Variables=360, Unsymm\n')
         lines.insert(dummyElementLine+1, '1, 2, 3, 21, 22, 23, 24, 25, 26\n')
         # NOTE: Since lines are changed above, we cannot create lowerLines like in other functions and reuse it. As a result, we need to create the lowerLines list again (with isConversionNeeded=True).
         endPartLine = getLineIndex(lines, '*End Part\n', isConversionNeeded=True)
-        # TODO: what afp, PML_Rcoef, and RD_half_width/depth mean?
+        # [NOTE] Info for parameters used for UEL
+        #   E: Young's Modulus
+        #   xnu: Poisson Ratio
+        #   rho: Density
+        #   EleType_pos: 0.0 (A trivial property)
+        #   PML_L: Depth of PML (distance from the boundary of DRM layer to the exterior of PML region)
+        #   afp: Described as `m` and is equal to 2.0 in Wenyang's paper. It is the polynomial degree for alpha and beta functions.
+        #   PML_Rcoef: Described as `R` and is equal to 10^(-10) in Wenyang's paper. It is a user-tunable reflection coefficient.
+        #   RD_half_width_x: Half width of the domain in x direction without PML layers (i.e., the distance in x direction from the center to the boundary of DRM layer)
+        #   RD_half_width_y: Half width of the domain in y direction without PML layers (i.e., the distance in y direction from the center to the boundary of DRM layer)
+        #   RD_depth: The depth (in z direction) of the domain without PML (i.e., the depth of the interested region + the thickness of DRM layer)
+        #   Damp_alpha, Damp_beta: alpha and beta used in Rayleigh Damping
         lines[endPartLine:endPartLine] = ['*Parameter\n', 'E=%e\n'%youngsModulus, 'xnu=%f\n'%poissonsRatio, 'rho=%f\n'%density, 
             'EleType_pos=0.0\n', 'PML_L=%f\n'%PML_depth, 'afp=2.0\n', 'PML_Rcoef=1e-10\n', 
-            'RD_half_width_x=%f\n'%(10*lengths['x']), 'RD_half_width_y=%f\n'%(10*lengths['y']),
-            'RD_depth=%f\n'%(10*lengths['z']), 'Damp_alpha=%f\n'%alpha, 'Damp_beta=%f\n'%beta, 
-            # '*UEL Property, elset=%s.PML\n'%partName, '<E>, <xnu>, <rho>, <EleType_pos>, <PML_L>, <afp>, <PML_Rcoef>, <RD_half_width_x>,\n', 
+            'RD_half_width_x=%f\n'%(lengths['x']/2-PML_depth), 'RD_half_width_y=%f\n'%(lengths['y']/2-PML_depth),
+            'RD_depth=%f\n'%(lengths['z']-PML_depth), 'Damp_alpha=%f\n'%alpha, 'Damp_beta=%f\n'%beta, 
             '*UEL Property, elset=PML\n', '<E>, <xnu>, <rho>, <EleType_pos>, <PML_L>, <afp>, <PML_Rcoef>, <RD_half_width_x>,\n', 
             '<RD_half_width_y>, <RD_depth>, <Damp_alpha>, <Damp_beta>\n']
-        # lines += ['*UEL Property, elset=UEL_All\n', '<E>, <xnu>, <rho>, <EleType_pos>, <PML_L>, <afp>, <PML_Rcoef>, <RD_half_width_x>,\n', 
         # NOTE: Again, the lines are changed above, so we need to create the lowerLines list again.
         endStepLine = getLineIndex(lines, '*End Step\n', isConversionNeeded=True)
         lines.insert(endStepLine, '*Include, input=%s\n'%cLoadFileName)
@@ -94,8 +111,6 @@ def getLabelsInSet(jobName, setName, setType):
         nextKeywordLine = getNextKeywordLine(lowerLines, setLine+1)
         labelLines = lines[setLine+1:nextKeywordLine]
         # NOTE: iterable unpacking cannot be used in comprehension
-        # labels = [*line.rstrip(',\n').split(',') for line in labelLines]
-        # labels = [int(label) for label in labels]
         labels = [int(label) for line in labelLines for label in line.rstrip(',\n').split(',')]
     except ValueError: # target is not in the input file
         target = target[setType].rstrip(',\n') + ', generate\n'
@@ -103,7 +118,6 @@ def getLabelsInSet(jobName, setName, setType):
         nextKeywordLine = getNextKeywordLine(lowerLines, setLine+1)
         labelLines = lines[setLine+1:nextKeywordLine]
         labelRanges = [[int(label) for label in line.rstrip(',\n').split(',')] for line in labelLines]
-        # labels = [*range(lRange[0], lRange[1]+1, lRange[2]) for lRange in labelRanges]
         labels = [label for lRange in labelRanges for label in range(lRange[0], lRange[1]+1, lRange[2])]
     return labels
 
@@ -147,7 +161,7 @@ def getJacobian(nodes, dN):
     """ dN is the derivative of shape function """
     if type(nodes) is dict:
         nodes = np.array(nodes.values())
-    J = np.matmul(dN, nodes)
+    J = np.matmul(dN, nodes) # [TODO] Maybe this one should be A matrix (which is the transposed J)
     if np.linalg.det(J) < 0:
         # NOTE: A nonzero volume element in the real element is mapped 
         # into zero volume in the master element, which is unacceptable.
@@ -162,9 +176,13 @@ def getElementStiffnessMatrix(D, J, dN, wXi, wEta, wZeta):
         Bi[0] += [dNdx[0, i], 0, 0]
         Bi[1] += [0, dNdx[1, i], 0]
         Bi[2] += [0, 0, dNdx[2, i]]
-        Bi[3] += [0, dNdx[2, i], dNdx[1, i]]
+        # Bi[3] += [0, dNdx[2, i], dNdx[1, i]]
+        # Bi[4] += [dNdx[2, i], 0, dNdx[0, i]]
+        # Bi[5] += [dNdx[1, i], dNdx[0, i], 0]
+        # [TODO] Maybe the following are correct one?
+        Bi[3] += [dNdx[1, i], dNdx[0, i], 0]
         Bi[4] += [dNdx[2, i], 0, dNdx[0, i]]
-        Bi[5] += [dNdx[1, i], dNdx[0, i], 0]
+        Bi[5] += [0, dNdx[2, i], dNdx[1, i]]
     B = np.array(Bi)
     J_det = np.linalg.det(J)
     # NOTE: @ is the special notation used for numpy to handle matrix multiplication. (same as np.matmul())
@@ -205,16 +223,12 @@ def getGlobalMatrices(D, density, integrationPoints, weighting, DRM_elements, DR
                     drmC[globalRow, globalCol] += eleC[row, col]
     return drmK, drmM, drmC
 
-def getDisplacementHistoryForDRM(jobName, partName, targetOrigin, dispHistoryFileName='DispHistory.csv'):
-    dbPath = '../database/planedisplacements.hdf5'
+def getDisplacementHistoryForDRM(jobName, partName, targetOrigin, dispHistoryFileName='DispHistory.csv', dbPath='../database/planedisplacements.hdf5'):
     nodes = getNodesOnAPart(jobName, partName)
     DRM_interiorNodeLabels = getLabelsInSet(jobName, setName='inDRM', setType='node')
     DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName='sideDRM', setType='node')
     DRM_sideNodeLabels = DRM_interiorNodeLabels + DRM_exteriorNodeLabels
     DRM_nodes = [nodes[label] for label in DRM_sideNodeLabels]
-    # gridPoints = [[node[0]+x_dis, node[1]+y_dis, node[2]] for node in nodes.values()]
-    # df = getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=nodes.keys(), gridPointsInMeter=True)
-    # gridPoints = [[nodes[label][0]+x_dis, nodes[label][1]+y_dis, nodes[label][2]] for label in DRM_sideNodeLabels]
     gridPoints = getConvertedGridPoints(dbPath, DRM_nodes, origin=targetOrigin, gridPointsInMeter=True)
     df = getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=DRM_sideNodeLabels, gridPointsInMeter=True)
     df.to_csv(dispHistoryFileName)
@@ -243,11 +257,25 @@ def getQuantityMatrixAtPoints(histories, pointLabelList, quantity):
     matrix = [histories[pointLabel][quantity+direction] for pointLabel in pointLabelList for direction in ['x', 'y', 'z']]
     return np.array(matrix)
 
+# NOTE: This function assume there is only one instance created from the given part
+def getInstanceName(jobName, partName):
+    with open(jobName+'.inp', 'r') as f:
+        lines = f.readlines()
+    lowerLines = [line.lower() for line in lines] # For case insensitive search
+    for line in lowerLines:
+        if line.startswith('*instance') and line.endswith('part=%s\n'%partName):
+            columns = [x.strip() for x in line.split(',')]
+            for column in columns:
+                if column.startswith('name='):
+                    instanceName = column[5:]
+                    return instanceName
+    return None
+
 def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileName='Cload.txt'):
-    density, E, nu = getMaterialPropertiesFromInputFile(jobName, materialName)
+    density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(jobName, materialName)
     # NOTE: The variable D below is usually denoted as C, but we also use C to denote the damping matrix.
     # To avoid the confusion, here we use D to denote the stiffness matrix for isotropic material.
-    D = getStiffnessMatrix(E, nu)
+    D = getStiffnessMatrix(youngsModulus, poissonsRatio)
     nodes = getNodesOnAPart(jobName, partName)
     elements = getElementsOnAPart(jobName, partName, elementType='C3D8R')
     DRM_elementLabels = getLabelsInSet(jobName, setName='DRM', setType='element')
@@ -284,26 +312,13 @@ def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileN
     # P_eff_ez = P_eff_e[range(2, 3*len(DRM_exteriorNodeLabels), 3)]
     startIndices = {'x': 0, 'y': 1, 'z': 2}
     DoF = {'x': 1, 'y': 2, 'z': 3}
-    # for direction, startIndex in startIndices.items():
-    #     for nodeIndex, nodeLabel in enumerate(DRM_interiorNodeLabels):
-    #         newLines = ['*Cload, amplitude=Amp-%d%s\n'%(nodeLabel, direction),
-    #             '%s-1.%d, %s, 1\n'%(partName, nodeLabel, DoF[direction]),
-    #             '*Amplitude, name=Amp-%d%s\n'%(nodeLabel, direction)]
-    #         for timeIndex, P_eff in enumerate(P_eff_b[range(startIndex, 3*len(DRM_interiorNodeLabels), 3)][nodeIndex]):
-    #             newLines.append('%.4f, %e\n'%(timePoints[timeIndex], P_eff))
-    # for direction, startIndex in startIndices.items():
-    #     for nodeIndex, nodeLabel in enumerate(DRM_exteriorNodeLabels):
-    #         newLines += ['*Cload, amplitude=Amp-%d%s\n'%(nodeLabel, direction),
-    #             '%s-1.%d, %s, 1\n'%(partName, nodeLabel, DoF[direction]),
-    #             '*Amplitude, name=Amp-%d%s\n'%(nodeLabel, direction)]
-    #         for timeIndex, P_eff in enumerate(P_eff_e[range(startIndex, 3*len(DRM_exteriorNodeLabels), 3)][nodeIndex]):
-    #             newLines.append('%.4f, %e\n'%(timePoints[timeIndex], P_eff))
     lines = []
     P_effs = np.vstack((P_eff_b, P_eff_e))
+    instanceName = getInstanceName(jobName, partName)
     for direction, startIndex in startIndices.items():
         for nodeIndex, nodeLabel in enumerate(DRM_sideNodeLabels):
             lines += ['*Cload, amplitude=Amp-%d%s\n'%(nodeLabel, direction),
-                '%s.%d, %s, 1\n'%(partName, nodeLabel, DoF[direction]),
+                '%s.%d, %s, 1\n'%(instanceName, nodeLabel, DoF[direction]),
                 '*Amplitude, name=Amp-%d%s\n'%(nodeLabel, direction)]
             for timeIndex, P_eff in enumerate(P_effs[range(startIndex, 3*len(DRM_sideNodeLabels), 3)][nodeIndex]):
                 lines.append('%.4f, %e\n'%(timePoints[timeIndex], P_eff))
@@ -311,36 +326,86 @@ def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileN
         f.writelines(lines)
     return
 
+# NOTE: This function is used to get and centroid of the part and later use it 
+# to get the material properties at this centroid. However, it should be done 
+# when building the model. So this function might be moved later.
+# def getCentroid(jobName, partName):
+#     nodes = getNodesOnAPart(jobName, partName)
+#     nodeCoordinates = {'x': [], 'y': [], 'z': []}
+#     for node in nodes.values():
+#         for i, direction in enumerate(nodeCoordinates.keys()):
+#             nodeCoordinates[direction].append(node[i])
+#     # NOTE: Because the domain should be a simple hexagon, we can get the centroid 
+#     # of it by the following easy way. Be aware if the domain is more complicated.
+#     centroid = [max(nodeCoordinates[direction])+min(nodeCoordinates[direction]) for direction in nodeCoordinates.keys()]
+#     return centroid
+
+def getMaterialPropertiesAtCentroid(centroid, isAdjustmentNeeded=True, origin=None, dbPath='../database/planedisplacements.hdf5'):
+    if isAdjustmentNeeded and origin is not None:
+        planesData = pd.read_hdf(dbPath, 'planesData')
+        distance, x_dis, y_dis = getDistanceFromPlaneOrigin(origin, planesData.loc[0])
+        centroid = [centroid[0]+x_dis, centroid[1]+y_dis, centroid[2]]
+    # NOTE: The input of `getMaterialProperties` should be a dict. The key is designed 
+    # to be an element's tag (label). Here we just use a dummy 1 to make it works.
+    materialProperties = getMaterialProperties({1: centroid})
+    Vs, Vp, rho = materialProperties[1]
+    poissonsRatio = (Vp**2 - 2*Vs**2)/(2*(Vp**2 - Vs**2)) # Ref: Eq. (5.34) in Geotechnical Earthquake Engineering (Kramer)
+    G = rho*Vs**2 # Shear Modulus
+    youngsModulus = 2*G*(1+poissonsRatio)
+    return youngsModulus, poissonsRatio, rho
+
+def writeDataForCreatingAbaqusModel(dataForAbaqusModel, fileName='dataForAbaqusModel.csv'):
+    ''' dataForAbaqusModel should be a dict '''
+    with open(fileName, 'w') as f:
+        writer = csv.DictWriter(f, fieldnames=dataForAbaqusModel.keys())
+        writer.writeheader()
+        writer.writerow(dataForAbaqusModel)
+    return
 
 if __name__ == '__main__':
     # NOTE: Change working diretory to the folder of this script
     import os
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    
+    # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
+    # total length of the part (including the interested domain, DRM layer, and PML layer).
     # lengths = {'x': 365, 'y': 190, 'z': 150}
     lengths = {'x': 100, 'y': 100, 'z': 100}
-    DRM_depth = 5
-    PML_depth = DRM_depth*5
+    DRM_depth = 5 # The thickness of the DRM layer should be the mesh size used in the Abaqus model
+    PML_depth = DRM_depth*5 # Could be ranged from 5 to 10 times of the thickness of DRM. But 5 is good enough.
     partName = 'domain'
     materialName = 'soil'
-    # NOTE: this section should be done by the inquiry system, which will extract 
-    # the soil material properties and write them into the .inp file.
-    density = 120
-    youngsModulus = 1E9
-    poissonsRatio = 0.3
     # ===== Rayleigh Damping =====
     alpha = 0
     beta = 0
+    # =====
     jobName = 'DRM_PML_Analysis'
     subroutineFileName = 'PML3dUEL912.f'
+    timeIncrement = 0.05 # unit: sec. This should be read from the site response file
+    duration = 29.95 # unit: sec. This should be read from the site response file
+    targetOrigin = [41.022024713821054, 28.88575077152881]
 
-    # createPreliminaryModel(lengths, DRM_depth, PML_depth, partName, materialName,
-    #     density, youngsModulus, poissonsRatio, jobName)
-    # modifyInputAndCheck(lengths, PML_depth, partName, materialName, alpha, beta, jobName, subroutineFileName)
-    
+    # ===== Get material properties =====
+    centroid = [x/2 for x in lengths.values()]
+    youngsModulus, poissonsRatio, density = getMaterialPropertiesAtCentroid(centroid, origin=targetOrigin)
+
+    # ===== Write data for creating Abaqus model =====
+    # NOTE: All the lengths are the total length of the part (including the interested domain, DRM layer, and PML layer).
+    dataForAbaqusModel = {'length_x': lengths['x'], 'length_y': lengths['y'], 'length_z': lengths['z'], 
+        'DRM_depth': DRM_depth, 'PML_depth': PML_depth,
+        'partName': partName, 'materialName': materialName, 
+        'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density, 
+        'alpha': alpha, 'beta': beta, 
+        'jobName': jobName, 'subroutineFileName': subroutineFileName,
+        'timeIncrement': timeIncrement, 'duration': duration}
+    # writeDataForCreatingAbaqusModel(dataForAbaqusModel)
+    # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
+    # After the .inp file generated, move the .inp file back.
+
+    # ===== Getting the displacement histories for DRM nodes =====
     # import timeit
     # numExec = 1
-    # targetOrigin = [41.022024713821054, 28.88575077152881]
     # print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: getDisplacementHistoryForDRM(jobName, partName, targetOrigin), number=numExec)/numExec))
     # df = getDisplacementHistoryForDRM(jobName, partName, targetOrigin)
-    getEquivalentForces(jobName, partName, materialName, alpha, beta)
+    
+    # ===== Compute the equivalent forces =====
+    # getEquivalentForces(jobName, partName, materialName, alpha, beta)
