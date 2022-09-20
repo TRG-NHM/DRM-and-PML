@@ -3,15 +3,17 @@ import pandas as pd
 import sys
 import csv
 sys.path.append('../HerculesDatabaseInquirySystem')
-from hdf5Search import getConvertedGridPoints, getInterpolatedHistoryDataForGridPoints, getDistanceFromPlaneOrigin
+from hdf5Search import getConvertedGridPointsForAbaqusModel, getInterpolatedHistoryDataForGridPoints, getDistanceFromPlaneOrigin
 from getMaterialProperties import getMaterialProperties
 
-def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName, cLoadFileName='Cload.txt'):
-    density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(jobName, materialName)
+def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName, preInputFileName=None, dummyElementType='C3D8R', cLoadFileName='Cload.txt'):
+    if preInputFileName is None:
+        preInputFileName = jobName+'_pre.inp'
+    density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(preInputFileName.rstrip('.inp'), materialName)
     # Read the input file and make modifications for UEL use
-    with open(jobName+'_pre.inp', 'r') as f:
+    with open(preInputFileName, 'r') as f:
         lines = f.readlines()
-        dummyElementLine = getLineIndex(lines, '*Element, type=C3D8\n', isConversionNeeded=True)
+        dummyElementLine = getLineIndex(lines, '*Element, type=%s\n'%dummyElementType, isConversionNeeded=True)
         lines[dummyElementLine] = '*Element, type=U3\n'
         # [NOTE] Info for parameters under *USER ELEMENT:
         #   TYPE: Must be 'Un' where n is a positive integer less than 10000, and it must be the same as the element type key used to identify this element on the *ELEMENT option.
@@ -161,7 +163,10 @@ def getJacobian(nodes, dN):
     """ dN is the derivative of shape function """
     if type(nodes) is dict:
         nodes = np.array(nodes.values())
-    J = np.matmul(dN, nodes) # [TODO] Maybe this one should be A matrix (which is the transposed J)
+    # NOTE: the definitions of A and J follow CEE 235B conducted by Prof. ET. 
+    # Some others might use J = np.matmul(dN, nodes), and Bi will be changed accordingly.
+    A = np.matmul(dN, nodes)
+    J = A.transpose()
     if np.linalg.det(J) < 0:
         # NOTE: A nonzero volume element in the real element is mapped 
         # into zero volume in the master element, which is unacceptable.
@@ -170,7 +175,7 @@ def getJacobian(nodes, dN):
     
 def getElementStiffnessMatrix(D, J, dN, wXi, wEta, wZeta):
     dNdx = np.matmul(np.linalg.inv(J.transpose()), dN)
-    # NOTE: Hard-coded 6 and 8 is used here. This only applys to 3D problem.
+    # NOTE: Hard-coded 6 and 8 is used here. This only applies to 3D problem.
     Bi = [[] for i in range(6)]
     for i in range(8):
         Bi[0] += [dNdx[0, i], 0, 0]
@@ -179,7 +184,9 @@ def getElementStiffnessMatrix(D, J, dN, wXi, wEta, wZeta):
         # Bi[3] += [0, dNdx[2, i], dNdx[1, i]]
         # Bi[4] += [dNdx[2, i], 0, dNdx[0, i]]
         # Bi[5] += [dNdx[1, i], dNdx[0, i], 0]
-        # [TODO] Maybe the following are correct one?
+        # NOTE: the definition of Bi follows CEE 235B conducted by Prof. ET. 
+        # Some others might use the definition above. Then the definition of 
+        # J will also be changed accordingly.
         Bi[3] += [dNdx[1, i], dNdx[0, i], 0]
         Bi[4] += [dNdx[2, i], 0, dNdx[0, i]]
         Bi[5] += [0, dNdx[2, i], dNdx[1, i]]
@@ -223,19 +230,22 @@ def getGlobalMatrices(D, density, integrationPoints, weighting, DRM_elements, DR
                     drmC[globalRow, globalCol] += eleC[row, col]
     return drmK, drmM, drmC
 
-def getDisplacementHistoryForDRM(jobName, partName, targetOrigin, dispHistoryFileName='DispHistory.csv', dbPath='../database/planedisplacements.hdf5'):
+def getAndWriteDisplacementHistoryForDRM(jobName, partName, targetOrigin, dispHistoryFileName='DispHistory.csv', dbPath='../HerculesDatabaseInquirySystem/database/planedisplacements.hdf5'):
+    # NOTE: mpirun works here since we use `getInterpolatedHistoryDataForGridPoints()` function
     nodes = getNodesOnAPart(jobName, partName)
     DRM_interiorNodeLabels = getLabelsInSet(jobName, setName='inDRM', setType='node')
     DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName='sideDRM', setType='node')
     DRM_sideNodeLabels = DRM_interiorNodeLabels + DRM_exteriorNodeLabels
     DRM_nodes = [nodes[label] for label in DRM_sideNodeLabels]
-    gridPoints = getConvertedGridPoints(dbPath, DRM_nodes, origin=targetOrigin, gridPointsInMeter=True)
+    gridPoints = getConvertedGridPointsForAbaqusModel(dbPath, DRM_nodes, origin=targetOrigin, gridPointsInMeter=True)
     df = getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=DRM_sideNodeLabels, gridPointsInMeter=True)
     df.to_csv(dispHistoryFileName)
     return df
 
 def getHistoryOutputforDRM(dispHistoryFileName='DispHistory.csv'):
-    # df = getDisplacementHistoryForDRM(targetOrigin, dispHistoryFileName=dispHistoryFileName)
+    """ This function reads the displacement history and compute velocity and 
+    acceleration histories. Finally, it returns a Pandas DataFrame that contains 
+    all 3 histories. """
     df = pd.read_csv(dispHistoryFileName, index_col=0)
     pointLabelList = df['pointLabel'].drop_duplicates().to_list()
     histories = {}
@@ -277,7 +287,7 @@ def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileN
     # To avoid the confusion, here we use D to denote the stiffness matrix for isotropic material.
     D = getStiffnessMatrix(youngsModulus, poissonsRatio)
     nodes = getNodesOnAPart(jobName, partName)
-    elements = getElementsOnAPart(jobName, partName, elementType='C3D8R')
+    elements = getElementsOnAPart(jobName, partName, elementType='C3D8')
     DRM_elementLabels = getLabelsInSet(jobName, setName='DRM', setType='element')
     DRM_elements = {label: elements[label] for label in DRM_elementLabels}
     DRM_interiorNodeLabels = getLabelsInSet(jobName, setName='inDRM', setType='node')
@@ -340,7 +350,7 @@ def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileN
 #     centroid = [max(nodeCoordinates[direction])+min(nodeCoordinates[direction]) for direction in nodeCoordinates.keys()]
 #     return centroid
 
-def getMaterialPropertiesAtCentroid(centroid, isAdjustmentNeeded=True, origin=None, dbPath='../database/planedisplacements.hdf5'):
+def getMaterialPropertiesAtCentroid(centroid, isAdjustmentNeeded=True, origin=None, dbPath='../HerculesDatabaseInquirySystem/database/planedisplacements.hdf5'):
     if isAdjustmentNeeded and origin is not None:
         planesData = pd.read_hdf(dbPath, 'planesData')
         distance, x_dis, y_dis = getDistanceFromPlaneOrigin(origin, planesData.loc[0])
@@ -399,13 +409,18 @@ if __name__ == '__main__':
         'timeIncrement': timeIncrement, 'duration': duration}
     # writeDataForCreatingAbaqusModel(dataForAbaqusModel)
     # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
-    # After the .inp file generated, move the .inp file back.
+    # After the _pre.inp file generated, move the _pre.inp file back.
+
+    # ===== Modify the preliminary Abaqus input file =====
+    # modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName)
 
     # ===== Getting the displacement histories for DRM nodes =====
+    # NOTE: mpirun works here
     # import timeit
     # numExec = 1
-    # print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: getDisplacementHistoryForDRM(jobName, partName, targetOrigin), number=numExec)/numExec))
-    # df = getDisplacementHistoryForDRM(jobName, partName, targetOrigin)
+    # print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: getAndWriteDisplacementHistoryForDRM(jobName, partName, targetOrigin), number=numExec)/numExec))
+    # df = getAndWriteDisplacementHistoryForDRM(jobName, partName, targetOrigin)
     
     # ===== Compute the equivalent forces =====
-    # getEquivalentForces(jobName, partName, materialName, alpha, beta)
+    getEquivalentForces(jobName, partName, materialName, alpha, beta)
+    # NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file
