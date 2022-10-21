@@ -13,7 +13,7 @@ def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName
     # Read the input file and make modifications for UEL use
     with open(preInputFileName, 'r') as f:
         lines = f.readlines()
-        dummyElementLine = getLineIndex(lines, '*Element, type=%s\n'%dummyElementType, isConversionNeeded=True)
+        dummyElementLine = getLineIndex(lines, '*Element, type=%s\n'%dummyElementType)
         lines[dummyElementLine] = '*Element, type=U3\n'
         # [NOTE] Info for parameters under *USER ELEMENT:
         #   TYPE: Must be 'Un' where n is a positive integer less than 10000, and it must be the same as the element type key used to identify this element on the *ELEMENT option.
@@ -25,8 +25,7 @@ def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName
         #   Numbers in the second line: The active DoF
         lines.insert(dummyElementLine, '*User Element, Type=U3, Nodes=8, Coordinates=3, Properties=12, Variables=360, Unsymm\n')
         lines.insert(dummyElementLine+1, '1, 2, 3, 21, 22, 23, 24, 25, 26\n')
-        # NOTE: Since lines are changed above, we cannot create lowerLines like in other functions and reuse it. As a result, we need to create the lowerLines list again (with isConversionNeeded=True).
-        endPartLine = getLineIndex(lines, '*End Part\n', isConversionNeeded=True)
+        endPartLine = getLineIndex(lines, '*End Part\n')
         # [NOTE] Info for parameters used for UEL
         #   E: Young's Modulus
         #   xnu: Poisson Ratio
@@ -46,25 +45,30 @@ def modifyInput(lengths, PML_depth, partName, materialName, alpha, beta, jobName
             '*UEL Property, elset=PML\n', '<E>, <xnu>, <rho>, <EleType_pos>, <PML_L>, <afp>, <PML_Rcoef>, <RD_half_width_x>,\n', 
             '<RD_half_width_y>, <RD_depth>, <Damp_alpha>, <Damp_beta>\n']
         # NOTE: Again, the lines are changed above, so we need to create the lowerLines list again.
-        endStepLine = getLineIndex(lines, '*End Step\n', isConversionNeeded=True)
+        endStepLine = getLineIndex(lines, '*End Step\n')
         lines.insert(endStepLine, '*Include, input=%s\n'%cLoadFileName)
     with open(jobName+'.inp', 'w') as f:
         f.writelines(lines)
     return
 
-def getLineIndex(lines, target, startLine=0, isConversionNeeded=False):
+def getLineIndex(lines, target, startLine=0, isConversionNeeded=True):
+    ''' To make it foolproof, isConversionNeeded is set to True. For better 
+    performance, you may set it to be False. '''
     if isConversionNeeded: # NOTE: make the search case insensitive due to different input file writing preferences
-        lines = [line.lower() for line in lines]
-    return startLine + lines[startLine:].index(target.lower())
+        lines[startLine:] = [line.lower() for line in lines[startLine:]]
+    try:
+        return startLine + lines[startLine:].index(target.lower())
+    except ValueError: # .index() cannot find the target
+        return None
 
 def getMaterialPropertiesFromInputFile(jobName, materialName):
     with open(jobName+'.inp', 'r') as f:
         lines = f.readlines()
     lowerLines = [line.lower() for line in lines] # For case insensitive search
-    materialLine = getLineIndex(lowerLines, '*Material, name=%s\n'%materialName)
-    densityLine = getLineIndex(lowerLines, '*Density\n', startLine=materialLine)
+    materialLine = getLineIndex(lowerLines, '*Material, name=%s\n'%materialName, isConversionNeeded=False)
+    densityLine = getLineIndex(lowerLines, '*Density\n', startLine=materialLine, isConversionNeeded=False)
     density = float(lines[densityLine+1].split(',')[0])
-    elasticLine = getLineIndex(lowerLines, '*Elastic\n', startLine=materialLine)
+    elasticLine = getLineIndex(lowerLines, '*Elastic\n', startLine=materialLine, isConversionNeeded=False)
     elasticProperties = lines[elasticLine+1].split(',')
     youngsModulus = float(elasticProperties[0])
     poissonsRatio = float(elasticProperties[1])
@@ -73,15 +77,15 @@ def getMaterialPropertiesFromInputFile(jobName, materialName):
 def getNextKeywordLine(lines, startLine=0):
     for line in lines[startLine:]:
         if line.startswith('*'):
-            return getLineIndex(lines, line, startLine=startLine)
+            return getLineIndex(lines, line, startLine=startLine, isConversionNeeded=False)
     return None
 
 def getNodesOnAPart(jobName, partName):
     with open(jobName+'.inp', 'r') as f:
         lines = f.readlines()
     lowerLines = [line.lower() for line in lines] # For case insensitive search
-    partLine = getLineIndex(lowerLines, '*Part, name=%s\n'%partName)
-    nodeLine = getLineIndex(lowerLines, '*Node\n', startLine=partLine)
+    partLine = getLineIndex(lowerLines, '*Part, name=%s\n'%partName, isConversionNeeded=False)
+    nodeLine = getLineIndex(lowerLines, '*Node\n', startLine=partLine, isConversionNeeded=False)
     nextKeywordLine = getNextKeywordLine(lowerLines, nodeLine+1) # NOTE: the +1 is critical!
     nodeLines = lines[nodeLine+1:nextKeywordLine]
     nodes = [line.rstrip(',\n').split(',') for line in nodeLines]
@@ -93,8 +97,8 @@ def getElementsOnAPart(jobName, partName, elementType):
     with open(jobName+'.inp', 'r') as f:
         lines = f.readlines()
     lowerLines = [line.lower() for line in lines] # For case insensitive search
-    partLine = getLineIndex(lowerLines, '*Part, name=%s\n'%partName)
-    elementLine = getLineIndex(lowerLines, '*Element, type=%s\n'%elementType, startLine=partLine)
+    partLine = getLineIndex(lowerLines, '*Part, name=%s\n'%partName, isConversionNeeded=False)
+    elementLine = getLineIndex(lowerLines, '*Element, type=%s\n'%elementType, startLine=partLine, isConversionNeeded=False)
     nextKeywordLine = getNextKeywordLine(lowerLines, elementLine+1) # NOTE: the +1 is critical!
     elementLines = lines[elementLine+1:nextKeywordLine]
     elements = [line.rstrip(',\n').split(',') for line in elementLines]
@@ -108,15 +112,15 @@ def getLabelsInSet(jobName, setName, setType):
     lowerLines = [line.lower() for line in lines] # For case insensitive search
     target = {'element': '*Elset, elset=%s\n'%setName, 
         'node': '*Nset, nset=%s\n'%setName}
-    try:
-        setLine = getLineIndex(lowerLines, target[setType])
+    setLine = getLineIndex(lowerLines, target[setType], isConversionNeeded=False)
+    if setLine is not None:
         nextKeywordLine = getNextKeywordLine(lowerLines, setLine+1)
         labelLines = lines[setLine+1:nextKeywordLine]
         # NOTE: iterable unpacking cannot be used in comprehension
         labels = [int(label) for line in labelLines for label in line.rstrip(',\n').split(',')]
-    except ValueError: # target is not in the input file
+    else: # target is not in the input file
         target = target[setType].rstrip(',\n') + ', generate\n'
-        setLine = getLineIndex(lowerLines, target)
+        setLine = getLineIndex(lowerLines, target, isConversionNeeded=False)
         nextKeywordLine = getNextKeywordLine(lowerLines, setLine+1)
         labelLines = lines[setLine+1:nextKeywordLine]
         labelRanges = [[int(label) for label in line.rstrip(',\n').split(',')] for line in labelLines]
@@ -242,10 +246,10 @@ def getAndWriteDisplacementHistoryForDRM(jobName, partName, targetOrigin, dispHi
     df.to_csv(dispHistoryFileName)
     return df
 
-def getHistoryOutputforDRM(dispHistoryFileName='DispHistory.csv'):
+def getHistoryOutputForDRM(dispHistoryFileName='DispHistory.csv'):
     """ This function reads the displacement history and compute velocity and 
-    acceleration histories. Finally, it returns a Pandas DataFrame that contains 
-    all 3 histories. """
+    acceleration histories. Finally, it returns a Dict that contains all 3 
+    histories. """
     df = pd.read_csv(dispHistoryFileName, index_col=0)
     pointLabelList = df['pointLabel'].drop_duplicates().to_list()
     histories = {}
@@ -272,26 +276,27 @@ def getInstanceName(jobName, partName):
     with open(jobName+'.inp', 'r') as f:
         lines = f.readlines()
     lowerLines = [line.lower() for line in lines] # For case insensitive search
-    for line in lowerLines:
-        if line.startswith('*instance') and line.endswith('part=%s\n'%partName):
-            columns = [x.strip() for x in line.split(',')]
+    for index, line in enumerate(lowerLines):
+        if line.startswith('*instance') and line.endswith('part=%s\n'%partName.lower()):
+            columns = [x.strip() for x in lines[index].split(',')]
             for column in columns:
                 if column.startswith('name='):
                     instanceName = column[5:]
                     return instanceName
     return None
 
-def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileName='Cload.txt'):
+def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileName='Cload.txt', 
+        elementTypeOnPart='C3D8', DRM_ElSetName='DRM', inDRM_NSetName='inDRM', outDRM_NSetName='outDRM'):
     density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(jobName, materialName)
     # NOTE: The variable D below is usually denoted as C, but we also use C to denote the damping matrix.
     # To avoid the confusion, here we use D to denote the stiffness matrix for isotropic material.
     D = getStiffnessMatrix(youngsModulus, poissonsRatio)
     nodes = getNodesOnAPart(jobName, partName)
-    elements = getElementsOnAPart(jobName, partName, elementType='C3D8')
-    DRM_elementLabels = getLabelsInSet(jobName, setName='DRM', setType='element')
+    elements = getElementsOnAPart(jobName, partName, elementType=elementTypeOnPart)
+    DRM_elementLabels = getLabelsInSet(jobName, setName=DRM_ElSetName, setType='element')
     DRM_elements = {label: elements[label] for label in DRM_elementLabels}
-    DRM_interiorNodeLabels = getLabelsInSet(jobName, setName='inDRM', setType='node')
-    DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName='sideDRM', setType='node')
+    DRM_interiorNodeLabels = getLabelsInSet(jobName, setName=inDRM_NSetName, setType='node')
+    DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName=outDRM_NSetName, setType='node')
     DRM_sideNodeLabels = DRM_interiorNodeLabels + DRM_exteriorNodeLabels
     # NOTE: The simplest Gaussian quadrature is used here. Should be able to change it if needed.
     # For more information: https://en.wikipedia.org/wiki/Gaussian_quadrature
@@ -299,7 +304,7 @@ def getEquivalentForces(jobName, partName, materialName, alpha, beta, cLoadFileN
         [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1]])
     weighting = [[1, 1, 1] for i in range(8)]
     drmK, drmM, drmC = getGlobalMatrices(D, density, integrationPoints, weighting, DRM_elements, DRM_sideNodeLabels, nodes, alpha, beta)
-    timePoints, histories = getHistoryOutputforDRM()
+    timePoints, histories = getHistoryOutputForDRM()
     ub = getQuantityMatrixAtPoints(histories, DRM_interiorNodeLabels, 'u')
     ue = getQuantityMatrixAtPoints(histories, DRM_exteriorNodeLabels, 'u')
     vb = getQuantityMatrixAtPoints(histories, DRM_interiorNodeLabels, 'v')

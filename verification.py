@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
+import io
 
 def getStationList(folderPath: str, neglect_subfolder=True) -> list[str]:
     stationList = []
@@ -13,13 +14,13 @@ def getStationList(folderPath: str, neglect_subfolder=True) -> list[str]:
             dirNames[:] = [] # clear subdirectories. This act would neglect subdirectories after searching at current directory
     return stationList
 
-def removeUnnecessaryHeading(filePath):
+def getFileWithoutUnnecessaryHeading(filePath: str) -> io.StringIO:
     with open(filePath, 'r') as f:
         lines = f.readlines()
         lines[0] = lines[0].lstrip('#')
-    with open(filePath, 'w') as f:
-        f.writelines(lines)
-    return
+    # with open(filePath, 'w') as f:
+    #     f.writelines(lines)
+    return io.StringIO(''.join(lines))
 
 def getTimeHistoryFromStationAndAbaqusResult(stationFolder: str, AbaqusResultFolder: str) -> list[pd.DataFrame]:
     # NOTE: The sequence would be [1, 0]. So the location sequence would be ['Center', 'Top Center']
@@ -30,8 +31,8 @@ def getTimeHistoryFromStationAndAbaqusResult(stationFolder: str, AbaqusResultFol
     for stationFileName in stationList:
         prefix, suffix = os.path.splitext(stationFileName)
         stationFilePath = os.path.join(stationFolder, stationFileName)
-        removeUnnecessaryHeading(stationFilePath)
-        df = pd.read_csv(stationFilePath, delim_whitespace=True, index_col='Time(s)')
+        stationFile = getFileWithoutUnnecessaryHeading(stationFilePath)
+        df = pd.read_csv(stationFile, delim_whitespace=True, index_col='Time(s)')
         stations.append(df)
         AbaqusResultFileName = [fileName for fileName in AbaqusResultList if suffix+'.csv' in fileName][0]
         df = pd.read_csv(os.path.join(AbaqusResultFolder, AbaqusResultFileName), index_col='Time(s)')
