@@ -62,10 +62,10 @@ def getHistoryOutputForDRMFromStationFiles(stationFolder: str, nodeTableFileName
     else:
         columns = [quantity+direction for quantity in ['u', 'v', 'a'] for direction in ['x', 'y', 'z']]
     for nodeNum in nodeTable.index:
-        stationFileName = 'station.'+str(nodeNum)
-        nodeLabel = int(nodeTable.loc[nodeNum]['nodelabel'])
+        nodeLabel = int(nodeTable.loc[nodeNum, 'nodelabel'])
         if nodeLabels is not None and nodeLabel not in nodeLabels:
             continue
+        stationFileName = 'station.'+str(nodeNum)
         stationFilePath = os.path.join(stationFolder, stationFileName)
         stationFile = getFileWithoutUnnecessaryHeading(stationFilePath)
         df = pd.read_csv(stationFile, delim_whitespace=True, index_col='Time(s)')

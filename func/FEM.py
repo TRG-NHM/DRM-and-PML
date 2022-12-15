@@ -120,9 +120,9 @@ def getGlobalMatrices(integrationPoints: np.array, weighting: list, DRM_elements
             eleC = alpha*eleK + beta*eleM
             nodeIndices = [DRM_sideNodeLabels.index(label) for label in nodeLabels]
             globalDOF = [label for nodeIndex in nodeIndices for label in range(3*nodeIndex, 3*nodeIndex+3)]
-            for row, globalRow in enumerate(globalDOF):
-                for col, globalCol in enumerate(globalDOF):
-                    drmK[globalRow, globalCol] += eleK[row, col]
-                    drmM[globalRow, globalCol] += eleM[row, col]
-                    drmC[globalRow, globalCol] += eleC[row, col]
+            # NOTE: Although this approach utilizes Advanced indexing (not Basic indexing, thus creates a copy every time), 
+            # it's still faster than a double for loop with single element indexing (one kind of Basic indexing).
+            drmK[np.ix_(globalDOF, globalDOF)] += eleK
+            drmM[np.ix_(globalDOF, globalDOF)] += eleM
+            drmC[np.ix_(globalDOF, globalDOF)] += eleC
     return drmK, drmM, drmC
