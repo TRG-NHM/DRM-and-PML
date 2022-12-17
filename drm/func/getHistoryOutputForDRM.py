@@ -1,22 +1,6 @@
 import pandas as pd
 import numpy as np
 import os, io
-from getNodes import getNodeCoordinates
-from getLabelsInSet import getLabelsInSet
-from searchHDF5 import getConvertedGridPointsForAbaqusModel, getInterpolatedHistoryDataForGridPoints
-
-def getAndWriteDisplacementHistoryForDRM(dbPath: str, jobName: str, partName: str, 
-    targetOrigin: list[float], dispHistoryFileName='DispHistory.csv') -> pd.DataFrame:
-    ''' # NOTE: mpirun works here since we use `getInterpolatedHistoryDataForGridPoints()` function '''
-    nodes = getNodeCoordinates(jobName, partName)
-    DRM_interiorNodeLabels = getLabelsInSet(jobName, setName='inDRM', setType='node')
-    DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName='outDRM', setType='node')
-    DRM_sideNodeLabels = DRM_interiorNodeLabels + DRM_exteriorNodeLabels
-    DRM_nodes = [nodes[label] for label in DRM_sideNodeLabels]
-    gridPoints = getConvertedGridPointsForAbaqusModel(dbPath, DRM_nodes, origin=targetOrigin, gridPointsInMeter=True)
-    df = getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=DRM_sideNodeLabels, gridPointsInMeter=True)
-    df.to_csv(dispHistoryFileName)
-    return df
 
 def getHistoryOutputForDRMFromDispHistoryFile(dispHistoryFileName='DispHistory.csv') -> tuple[list[float], dict[int, dict[str, np.array]]]:
     """ This function reads the displacement history and compute velocity and 
@@ -48,7 +32,8 @@ def getFileWithoutUnnecessaryHeading(filePath: str) -> io.StringIO:
     #     f.writelines(lines)
     return io.StringIO(''.join(lines))
 
-def getHistoryOutputForDRMFromStationFiles(stationFolder: str, nodeTableFileName='nodeTable.csv', isCoordinateConverted=False, nodeLabels=None, truncateTime=None)  -> tuple[list[float], dict[int, dict[str, np.array]]]:
+def getHistoryOutputForDRMFromStationFiles(stationFolder: str, nodeTableFileName='nodeTable.csv', isCoordinateConverted=False, 
+    nodeLabels=None, truncateTime=None, isResponseRecalculationNeeded=False)  -> tuple[list[float], dict[int, dict[str, np.array]]]:
     """ This function reads the displacement history and compute velocity and 
     acceleration histories. Finally, it returns a Dict that contains all 
     3 histories. """
@@ -74,11 +59,12 @@ def getHistoryOutputForDRMFromStationFiles(stationFolder: str, nodeTableFileName
             df.index = df.index - truncateTime[0]
         df.columns = columns
         # NOTE: We may need to compute the velocity and acceleration by ourselves because sometimes Hercules generate weirdly large acceleration.
-        # for direction in ['x', 'y', 'z']:
-        #     df['v'+direction] = df['u'+direction].diff()/df.index.to_series().diff()
-        #     df['v'+direction].iloc[0] = 0
-        #     df['a'+direction] = df['v'+direction].diff()/df.index.to_series().diff()
-        #     df['a'+direction].iloc[0] = 0
+        if isResponseRecalculationNeeded:
+            for direction in ['x', 'y', 'z']:
+                df['v'+direction] = df['u'+direction].diff()/df.index.to_series().diff()
+                df['v'+direction].iloc[0] = 0
+                df['a'+direction] = df['v'+direction].diff()/df.index.to_series().diff()
+                df['a'+direction].iloc[0] = 0
         histories[nodeLabel] = {column: df[column].to_numpy() for column in columns}
         if isCoordinateConverted:
             for quantity in ['u', 'v', 'a']:

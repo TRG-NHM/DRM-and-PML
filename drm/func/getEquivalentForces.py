@@ -17,7 +17,7 @@ def getQuantityMatrixAtPoints(histories: dict[int, dict[str, np.array]], pointLa
 def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', elementTypeOnPart='C3D8', 
         DRM_ElSetName='DRM', inDRM_NSetName='inDRM', outDRM_NSetName='outDRM', stationFolder='Stations',
         dispHistoryFileName=None, RFFileName=None, isCoordinateConverted=False, isHomogeneous=False,
-        materialName=None, nodeTableFileName='nodeTable.csv', truncateTime=None) -> None:
+        materialName=None, nodeTableFileName='nodeTable.csv', truncateTime=None, isResponseRecalculationNeeded=False) -> None:
     ''' getEquivalentForces write a file named `cLoadFileName` containing equivalent forces at DRM nodes. 
     If isHomogeneous==True, dispHistoryFileName and materialName must be defined. 
     If isHomogeneous==False, stationFolder and nodeTableFileName must be defined. '''
@@ -42,7 +42,8 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
     # Note that the old way does not consider whether the coordinate is converted.
     print('Get global matrices: %f sec'%(time()-tic))
     if dispHistoryFileName is None:
-        timePoints, histories = getHistoryOutputForDRMFromStationFiles(stationFolder, isCoordinateConverted=isCoordinateConverted, nodeTableFileName=nodeTableFileName, truncateTime=truncateTime)
+        timePoints, histories = getHistoryOutputForDRMFromStationFiles(stationFolder, isCoordinateConverted=isCoordinateConverted, 
+            nodeTableFileName=nodeTableFileName, truncateTime=truncateTime, isResponseRecalculationNeeded=isResponseRecalculationNeeded)
     else:
         timePoints, histories = getHistoryOutputForDRMFromDispHistoryFile(dispHistoryFileName)
     print('Get history output for DRM: %f sec'%(time()-tic))
@@ -79,7 +80,7 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
     # P_eff_ex = P_eff_e[0:3*len(DRM_exteriorNodeLabels):3]
     # P_eff_ey = P_eff_e[1:3*len(DRM_exteriorNodeLabels):3]
     # P_eff_ez = P_eff_e[2:3*len(DRM_exteriorNodeLabels):3]
-    print('Compute effective force vectors: %f sec'%(time()-tic))
+    del ub, ue, vb, ve, ab, ae, Kbe, Keb, Mbe, Meb, Cbe, Ceb # release memory
     startIndices = {'x': 0, 'y': 1, 'z': 2}
     DoF = {'x': 1, 'y': 2, 'z': 3}
     instanceName = getInstanceName(jobName, partName)
@@ -129,27 +130,3 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
                 f.writelines(lines)
     print('Build Cload.txt: %f sec'%(time()-tic))
     return
-
-if __name__ == '__main__':
-    # NOTE: write material files first before run this script.
-    # Meanwhile, run the static analysis and get RF.txt by running getReactionForce.py
-    # ===== Abaqus model information =====
-    jobName = 'Model_complete'
-    partName = 'Part-Soil'
-    nodeTableFileName = 'nodeTable.csv'
-    # ===== =====
-    getEquivalentForces(jobName, partName, elementTypeOnPart='C3D8', 
-        DRM_ElSetName='Set-DRM-element', RFFileName='RF.txt',
-        inDRM_NSetName='Set-DRM-inner-node', outDRM_NSetName='Set-DRM-outer-node',
-        isCoordinateConverted=True, stationFolder='Stations_topo')
-        # stationFolder='Stations_flat', truncateTime=[6.0, 11.99])
-        # stationFolder='Istanbul_sim55/outputfiles/stations_fullDomain', truncateTime=[3.0, 8.99])
-
-    # FOR DEBUGGING
-    # import matplotlib.pyplot as plt
-    # timePoints, histories = getHistoryOutputForDRMFromStationFiles('Stations_flat', isCoordinateConverted=True)
-    
-    # with open('ElementMaterial.txt', 'r') as f:
-    #     lines = f.readlines()
-    # indices = getAllLinesIndicesStartsWith(lines, heading='*sdjsidjo', startLine=5000, isConversionNeeded=True)
-    # print(indices)

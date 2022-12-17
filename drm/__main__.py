@@ -1,104 +1,18 @@
-import csv
-from materialDatabase.getMaterialProperties import getMaterialProperties
-from func.getDataFromInputFile import getDataFromHerculesInputFile, getMaterialPropertiesFromInputFile
-from func.getLine import getLineIndex, getNextKeywordLine, getNextLineIndexStartsWith, getAllLinesIndicesStartsWith
-from func.getPMLElementInputLine import getUserElementLines, getParametersLines
-from func.getDistance import getDistanceBetweenTwoCoordinates
+from func import hercules
 from func.getEquivalentForces import getEquivalentForces
-from func.getHistoryOutputForDRM import getAndWriteDisplacementHistoryForDRM
+from func.writeHistoryOutputForDRM import writeDisplacementHistoryForDRM
 from func.getNodes import writeNodeTable
+from abaqusInputProcessing import getMaterialPropertiesAtCentroid, writeDataForCreatingAbaqusModel, modifyInput
 from writeMaterialProperties import writeMaterialPropertiesForElements, writeMaterialPropertiesForPMLElements
 
-def modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta, 
-    isHomogeneous=True, stepName=None, dummyElementType='C3D8R', userElementType='U3',
-    preInputFileName=None, modelType=None, cLoadFileName='Cload.txt',
-    materialFileName='ElementMaterial.txt', elementSetFileName='ElementSet.txt', 
-    sectionFileName='ElementSection.txt', PMLMaterialFileName='ElementPML.txt'):
-    ''' Modify Abaqus input file. '''
-    if preInputFileName is None:
-        if modelType is None:
-            preInputFileName = jobName+'_pre.inp'
-        else:
-            preInputFileName = jobName+'_'+modelType+'_pre.inp'
-    # Read the input file and make modifications for UEL use
-    with open(preInputFileName, 'r') as f:
-        lines = f.readlines()
-    partLine = getLineIndex(lines, '*Part, name=%s\n'%partName)
-    dummyElementLine = getLineIndex(lines, '*Element, type=%s\n'%dummyElementType, startLine=partLine+1)
-    if isHomogeneous:
-        density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(materialName, fileName=jobName+'.inp')[:3]
-        lines[dummyElementLine] = '*Element, type=%s\n'%userElementType
-        lines[dummyElementLine:dummyElementLine] = getUserElementLines(userElementType)
-        endPartLine = getLineIndex(lines, '*End Part\n', startLine=partLine+1)
-        lines[endPartLine:endPartLine] = getParametersLines(youngsModulus, poissonsRatio, density, PML_depth, lengths, alpha, beta)
-    else: # heterogeneous
-        # Remove dummy element section since it would be replaced with PMLMaterialFile
-        endDummyElementLine = getNextKeywordLine(lines, startLine=dummyElementLine+1)
-        del lines[dummyElementLine:endDummyElementLine]
-        # Remove material section assignments since it would be replaced with elementSetFile and sectionFile
-        endPartLine = getLineIndex(lines, '*End Part\n', startLine=partLine+1)
-        sectionLines = getAllLinesIndicesStartsWith(lines[:endPartLine], heading='*Solid Section,', startLine=partLine+1)
-        for sectionLine in reversed(sectionLines):
-            endSectionLine = getNextKeywordLine(lines, startLine=sectionLine+1)
-            del lines[sectionLine:endSectionLine]
-        # Insert part-related files
-        partLine = getLineIndex(lines, '*Part, name=%s\n'%partName)
-        endPartLine = getLineIndex(lines, '*End Part\n', startLine=partLine+1)
-        lines.insert(endPartLine, '*Include, input=%s\n'%elementSetFileName)
-        lines.insert(endPartLine+1, '*Include, input=%s\n'%sectionFileName)
-        lines.insert(endPartLine+2, '*Include, input=%s\n'%PMLMaterialFileName)
-        # Insert material property file
-        endAssemblyLine = getLineIndex(lines, '*End Assembly\n')
-        lines.insert(endAssemblyLine+1, '*Include, input=%s\n'%materialFileName)
-    # Insert the step-related file (cLoad file)
-    if modelType != 'static':
-        if stepName is None:
-            stepLine = getNextLineIndexStartsWith(lines, heading='*Step')
-        else:
-            stepLine = getNextLineIndexStartsWith(lines, heading='*Step, name=%s'%stepName)
-        endStepLine = getLineIndex(lines, '*End Step\n', startLine=stepLine+1)
-        lines.insert(endStepLine, '*Include, input=%s\n'%cLoadFileName)
-    # /// Save inp file
-    if modelType is None:
-        inpName = jobName+'.inp'
-    else:
-        inpName = jobName+'_'+modelType+'.inp'
-    with open(inpName, 'w') as f:
-        f.writelines(lines)
-    return
-
-def getMaterialPropertiesAtCentroid(centroid, isAdjustmentNeeded=True, origin=None, 
-    istanbulMaterialModelOrigin=(40.9565, 28.675), minVs=None):
-    if isAdjustmentNeeded and origin is not None:
-        distance, x_dis, y_dis = getDistanceBetweenTwoCoordinates(istanbulMaterialModelOrigin, origin)
-        centroid = [centroid[0]+x_dis, centroid[1]+y_dis, centroid[2]]
-    # NOTE: The input of `getMaterialProperties` should be a dict. The key is designed 
-    # to be an element's tag (label). Here we just use a dummy 1 to make it works.
-    materialProperties = getMaterialProperties({1: centroid})
-    Vs, Vp, rho = materialProperties[1]
-    # NOTE: Applying this may make the material properties weird (even with some negative Poisson's Ratios). Use with cautions.
-    if minVs is not None and Vs < minVs:
-        Vs = minVs
-    poissonsRatio = (Vp**2 - 2*Vs**2)/(2*(Vp**2 - Vs**2)) # Ref: Eq. (5.34) in Geotechnical Earthquake Engineering (Kramer)
-    G = rho*Vs**2 # Shear Modulus
-    youngsModulus = 2*G*(1+poissonsRatio)
-    return youngsModulus, poissonsRatio, rho
-
-def writeDataForCreatingAbaqusModel(dataForAbaqusModel, fileName='dataForAbaqusModel.csv'):
-    ''' dataForAbaqusModel should be a dict '''
-    with open(fileName, 'w') as f:
-        writer = csv.DictWriter(f, fieldnames=dataForAbaqusModel.keys())
-        writer.writeheader()
-        writer.writerow(dataForAbaqusModel)
-    return
-
 def prospectusModel(stepNum: int) -> None:
-    ''' step 1: writeDataForCreatingAbaqusModel
+    ''' This function can be used as an example of homogeneous model without static step.
+        step 1: writeDataForCreatingAbaqusModel
         NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare 
         the model (run `createDomain.py`. abaqus cae noGUI=createDomain.py can do the trick).
         After the _pre.inp file generated, move the _pre.inp file back.
         step 2: modifyInput 
-        step 3: getAndWriteDisplacementHistoryForDRM (MPI can be used in this step)
+        step 3: writeDisplacementHistoryForDRM (MPI can be used in this step)
         step 4: getEquivalentForces 
         NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file '''
     dbPath = '../HerculesDatabaseInquirySystem/database/planedisplacements.hdf5'
@@ -115,14 +29,17 @@ def prospectusModel(stepNum: int) -> None:
     beta = 0
     # =====
     jobName = 'DRM_PML_Analysis'
-    subroutineFileName = 'PML3dUEL912.f'
+    subroutineFileName = 'PML3dUEL912.for'
     timeIncrement = 0.05 # unit: sec. This should be read from the site response file
     duration = 29.95 # unit: sec. This should be read from the site response file
     origin = (41.022024713821054, 28.88575077152881)
+    noDamping = True
+    stepApplication = 'moderate dissipation'
+    isStaticStepIncluded = False
     if stepNum == 1:
         # ===== Hercules model information =====
         HerculesInputFilePath = '../Mw5p83/inputfiles/parameters_ZDistrictDRM.in'
-        HerculesData = getDataFromHerculesInputFile(HerculesInputFilePath)
+        HerculesData = hercules.getInputData(HerculesInputFilePath)
         minVs = float(HerculesData['simulation_shear_velocity_min'])
         # ===== Get material properties =====
         centroid = [x/2 for x in lengths.values()]
@@ -135,7 +52,9 @@ def prospectusModel(stepNum: int) -> None:
             'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density, 
             'alpha': alpha, 'beta': beta, 
             'jobName': jobName, 'subroutineFileName': subroutineFileName,
-            'timeIncrement': timeIncrement, 'duration': duration}
+            'timeIncrement': timeIncrement, 'duration': duration,
+            'noDamping': noDamping, 'stepApplication': stepApplication,
+            'isStaticStepIncluded': isStaticStepIncluded}
         writeDataForCreatingAbaqusModel(dataForAbaqusModel)
         # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
         # After the _pre.inp file generated, move the _pre.inp file back.
@@ -147,8 +66,8 @@ def prospectusModel(stepNum: int) -> None:
         # NOTE: mpirun works here
         import timeit
         numExec = 1
-        print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: getAndWriteDisplacementHistoryForDRM(dbPath, jobName, partName, origin), number=numExec)/numExec))
-        # df = getAndWriteDisplacementHistoryForDRM(jobName, partName, origin)
+        print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: writeDisplacementHistoryForDRM(dbPath, jobName, partName, origin), number=numExec)/numExec))
+        # df = writeDisplacementHistoryForDRM(jobName, partName, origin)
     elif stepNum == 4:
         # ===== Compute the equivalent forces =====
         getEquivalentForces(jobName, partName, isHomogeneous=True, dispHistoryFileName='DispHistory.csv', materialName=materialName)
@@ -160,7 +79,8 @@ def prospectusModel(stepNum: int) -> None:
     return
 
 def IstanbulModel(stepNum: int) -> None:
-    ''' step 1: writeDataForCreatingAbaqusModel
+    ''' This function can be used as an example of heterogeneous model with static step.
+        step 1: writeDataForCreatingAbaqusModel
         NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare 
         the model (run `createDomain.py`. abaqus cae noGUI=createDomain.py can do the trick).
         After the _pre.inp files generated, move the _pre.inp files back.
@@ -172,7 +92,7 @@ def IstanbulModel(stepNum: int) -> None:
         In addition, the generated nodeTable.csv should be used to specify stations in Hercules' input 
         file and run Hercules analysis to generate station files.
         step 3: getEquivalentForces 
-        NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file '''
+        NOTE: After this step, move Cload.txt to the Abaqus working directory and run the complete analysis '''
     # ===== Abaqus model information =====
     # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
     # total length of the part (including the interested domain, DRM layer, and PML layer).
@@ -186,13 +106,15 @@ def IstanbulModel(stepNum: int) -> None:
     beta = 0
     # =====
     jobName = 'Istanbul_model'
-    subroutineFileName = 'PML3dUEL912.f'
+    subroutineFileName = 'PML3dUEL912.for'
     timeIncrement = 0.01 # unit: sec. This should be read from the site response file
     duration = 39.99 # unit: sec. This should be read from the site response file
     origin = (41.0318, 28.9417)
+    isCoordinateConverted = True
+    isOriginAtCenter = True
     # ===== Hercules model information =====
     HerculesInputFilePath = '../Abaqus Steel Building Model from Bulent/Istanbul_sim55/inputfiles/parameters_FullRegion_all_station_topo_final.in'
-    HerculesData = getDataFromHerculesInputFile(HerculesInputFilePath)
+    HerculesData = hercules.getInputData(HerculesInputFilePath)
     minVs = float(HerculesData['simulation_shear_velocity_min'])
     if stepNum == 1:
         # ===== Get material properties =====
@@ -206,7 +128,9 @@ def IstanbulModel(stepNum: int) -> None:
             'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density, 
             'alpha': alpha, 'beta': beta, 
             'jobName': jobName, 'subroutineFileName': subroutineFileName,
-            'timeIncrement': timeIncrement, 'duration': duration}
+            'timeIncrement': timeIncrement, 'duration': duration,
+            'isCoordinateConverted': isCoordinateConverted,
+            'isOriginAtCenter': isOriginAtCenter}
         writeDataForCreatingAbaqusModel(dataForAbaqusModel)
         # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
         # After the _pre.inp file generated, move the _pre.inp file back.
@@ -239,8 +163,8 @@ def IstanbulModel(stepNum: int) -> None:
     return
 
 if __name__ == '__main__':
-    # NOTE: Change working diretory to the folder of this script
-    import os
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    # prospectusModel(1)
+    # # NOTE: Change working diretory to the folder of this script
+    # import os
+    # os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # prospectusModel(4)
     IstanbulModel(3)

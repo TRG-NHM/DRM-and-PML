@@ -63,12 +63,15 @@ def plotAndSaveResults(locations: dict[str, dict[str, int]], stations: dict[int,
         fig.savefig(os.path.join(outputFolder, locationName+'.pdf'))
 
 if __name__ == '__main__':
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # # NOTE: Change working diretory to the folder of this script (you may not need it)
+    # os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # /// CASE 1: prospectusModel
     # stationFolder = './Verification/stations'
     # AbaqusResultFolder = './Verification/AbaqusResults'
     # locations = {'Soil box top center': {'station': 0, 'nodeLabel': 8302}, 'Soil box center': {'station': 1, 'nodeLabel': 8922}}
     # stations, AbaqusResults = getTimeHistoryFromStationAndAbaqusResult(stationFolder, AbaqusResultFolder)
     # plotAndSaveResults(locations, stations, AbaqusResults, outputFolder='./Verification')
+    # /// CASE 2: IstanbulModel
     stationFolder = '../Abaqus Steel Building Model from Bulent/Verification/stations'
     AbaqusResultFolder = '../Abaqus Steel Building Model from Bulent/Verification/AbaqusResults'
     locations = {'Istanbul soil box top center': {'station': 0, 'nodeLabel': 29406}}

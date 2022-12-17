@@ -10,8 +10,8 @@ import numpy as np
 
 def getMaterialProperties(points: dict[int, list[float, float, float]]) -> dict[int, list[float]]:
     # NOTE: x, y, z in each point should be in meter, and the directions are NS, EW, and pointing down to the earth (same as Hercules)
-    fileFolder = os.path.dirname(os.path.abspath(__file__))
-    cLib = np.ctypeslib.load_library('material_property_relative_V13.so', fileFolder)
+    # fileFolder = os.path.dirname(os.path.abspath(__file__))
+    cLib = np.ctypeslib.load_library('material_property_relative_V13.so', 'drm/material')
     getMaterialPropertiesInC = cLib.material_property_relative_V13
     getMaterialPropertiesInC.restype = np.ctypeslib.ndpointer(dtype=ctypes.c_double, shape=(7, )) # NOTE: There are 7 returned values
     elementMaterialProperties = {}

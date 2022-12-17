@@ -4,7 +4,7 @@ from func.getNodes import getNodeCoordinates
 from func.getDistance import getDistanceBetweenTwoCoordinates
 from func.getElements import getElements
 from func.getPMLElementInputLine import getUserElementLines, getParametersLines
-from materialDatabase.getMaterialProperties import getMaterialProperties
+from material.getMaterialProperties import getMaterialProperties
 
 def writeRawData(materialProperties: dict[int, list[float, float, float]], fileName=None, minVs=None) -> None:
     df = pd.DataFrame(materialProperties)

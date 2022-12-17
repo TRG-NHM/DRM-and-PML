@@ -71,10 +71,10 @@ def getElementStiffnessMatrix(D: np.array, J: np.array, dN: np.array, wXi: float
     B = np.array(Bi)
     J_det = np.linalg.det(J)
     # NOTE: @ is the special notation used for numpy to handle matrix multiplication. (same as np.matmul())
-    eleK = B.transpose()@D@B *J_det*wXi*wEta*wZeta
+    # eleK = B.transpose()@D@B *J_det*wXi*wEta*wZeta
     # NOTE 2: The version of numpy used in Abaqus is too old to support it. 
     # If this is going to be integrated into Abaqus, use the following version.
-    # eleK = np.matmul(np.matmul(B.transpose(), D), B)*J_det*wXi*wEta*wZeta
+    eleK = np.matmul(np.matmul(B.transpose(), D), B)*J_det*wXi*wEta*wZeta
     return eleK
 
 def getElementMassMatrix(density: float, N: np.array, J: np.array, wXi: float, wEta: float, wZeta: float) -> np.array:

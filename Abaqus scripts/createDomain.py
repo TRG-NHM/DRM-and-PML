@@ -237,14 +237,19 @@ def readDataForCreatingAbaqusModel(fileName='dataForAbaqusModel.csv'):
                 try:
                     data[key] = float(line[key])
                 except ValueError:
-                    data[key] = line[key]
+                    if line[key].lower() == 'true':
+                        data[key] = True
+                    elif line[key].lower() == 'false':
+                        data[key] = False
+                    else:
+                        data[key] = line[key]
             return data
 
 if __name__ == '__main__':
     data = readDataForCreatingAbaqusModel()
     lengths = {key: data['length_'+key] for key in ['x', 'y', 'z']}
-    dataKeysForPreliminaryModel = ['DRM_depth', 'PML_depth', 'partName', 'materialName', 'youngsModulus', 'poissonsRatio', 'density', 'timeIncrement', 'duration', 'jobName']
-    createPreliminaryModel(lengths, *[data[key] for key in dataKeysForPreliminaryModel], 
-        # noDamping=True, stepApplication='moderate dissipation', isStaticStepIncluded=False)
-        noDamping=False, isStaticStepIncluded=True, isCoordinateConverted=True, isOriginAtCenter=True)
+    dataKeysForPreliminaryModel = ['DRM_depth', 'PML_depth', 'partName', 'materialName', 
+        'youngsModulus', 'poissonsRatio', 'density', 'timeIncrement', 'duration', 'jobName', 
+        'noDamping', 'stepApplication', 'isStaticStepIncluded', 'isCoordinateConverted', 'isOriginAtCenter']
+    createPreliminaryModel(lengths, **{key: data[key] for key in dataKeysForPreliminaryModel if key in data.keys()})
     setViews()

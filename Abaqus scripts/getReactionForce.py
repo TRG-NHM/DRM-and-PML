@@ -64,5 +64,6 @@ def writeRF(DRMNodeSetName='outDRM', odbName=None, instanceName=None,
     return
 
 if __name__ == '__main__':
-    odbName = 'Istanbul_model_static.odb'
-    writeRF(odbName=odbName)
+    # odbName = 'Istanbul_model_static.odb'
+    # writeRF(odbName=odbName)
+    writeRF()
