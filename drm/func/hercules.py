@@ -1,3 +1,7 @@
+"""
+hercules.py includes tools related to Hercules.
+"""
+
 def getInputData(inputFilePath: str) -> dict:
     ''' getInputData returns a dict with all Hercules'
     parameters as the dict keys and values as the dict values. '''

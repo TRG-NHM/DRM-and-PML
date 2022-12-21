@@ -63,8 +63,6 @@ def plotAndSaveResults(locations: dict[str, dict[str, int]], stations: dict[int,
         fig.savefig(os.path.join(outputFolder, locationName+'.pdf'))
 
 if __name__ == '__main__':
-    # # NOTE: Change working diretory to the folder of this script (you may not need it)
-    # os.chdir(os.path.dirname(os.path.abspath(__file__)))
     # /// CASE 1: prospectusModel
     # stationFolder = './Verification/stations'
     # AbaqusResultFolder = './Verification/AbaqusResults'

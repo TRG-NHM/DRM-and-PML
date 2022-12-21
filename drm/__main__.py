@@ -1,3 +1,4 @@
+import argparse
 from func import hercules
 from func.getEquivalentForces import getEquivalentForces
 from func.writeHistoryOutputForDRM import writeDisplacementHistoryForDRM
@@ -163,8 +164,10 @@ def IstanbulModel(stepNum: int) -> None:
     return
 
 if __name__ == '__main__':
-    # # NOTE: Change working diretory to the folder of this script
-    # import os
-    # os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    # prospectusModel(4)
-    IstanbulModel(3)
+    # /// Parse input argument
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--stepNum', '-s', type=int, help='The step number for execution.')
+    stepNum = parser.parse_args().stepNum
+    # /// Pick which model you want to perform
+    prospectusModel(stepNum)
+    # IstanbulModel(stepNum)
