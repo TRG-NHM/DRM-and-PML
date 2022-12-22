@@ -30,3 +30,7 @@ The primary file you need to modify is the `__main__.py` under the `drm` folder.
     python3 drm -s stepNum
 
 `stepNum` should be changed to the step number (1, 2, 3, or 4) you want to run. The explanation for each step is included in the comment section in each function.
+
+## Acknowledgement
+
+The DRM and PML implementations are initially developed by Wenyang Zhang. His original implementation in MATLAB can be found [here](https://github.com/etacir/TRG-Regional-Seismic-Workflow).
