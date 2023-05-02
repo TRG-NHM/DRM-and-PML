@@ -39,7 +39,7 @@ def prospectusModel(stepNum: int) -> None:
     isStaticStepIncluded = False
     if stepNum == 1:
         # ===== Hercules model information =====
-        HerculesInputFilePath = '../Mw5p83/inputfiles/parameters_ZDistrictDRM.in'
+        HerculesInputFilePath = '../Cases/Mw5p83/inputfiles/parameters_ZDistrictDRM.in'
         HerculesData = hercules.getInputData(HerculesInputFilePath)
         minVs = float(HerculesData['simulation_shear_velocity_min'])
         # ===== Get material properties =====
@@ -114,7 +114,7 @@ def IstanbulModel(stepNum: int) -> None:
     isCoordinateConverted = True
     isOriginAtCenter = True
     # ===== Hercules model information =====
-    HerculesInputFilePath = '../Abaqus Steel Building Model from Bulent/Istanbul_sim55/inputfiles/parameters_FullRegion_all_station_topo_final.in'
+    HerculesInputFilePath = '../Cases/Abaqus Steel Building Model from Bulent/Istanbul_sim55/inputfiles/parameters_FullRegion_all_station_topo_final.in'
     HerculesData = hercules.getInputData(HerculesInputFilePath)
     minVs = float(HerculesData['simulation_shear_velocity_min'])
     if stepNum == 1:
@@ -154,7 +154,7 @@ def IstanbulModel(stepNum: int) -> None:
         # NOTE: This node table should be used to specify stations in Hercules' input file and run Hercules analysis to generate station files.
     elif stepNum == 3:
         # ===== Compute the equivalent forces =====
-        stationFolder = '../Abaqus Steel Building Model from Bulent/Stations_flat/'
+        stationFolder = '../Cases/Abaqus Steel Building Model from Bulent/Stations_flat/'
         getEquivalentForces(jobName+'_complete', partName, stationFolder=stationFolder, RFFileName='RF.txt', isCoordinateConverted=True)
         # NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file.
     else:

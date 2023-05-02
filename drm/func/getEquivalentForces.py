@@ -29,14 +29,9 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
     DRM_interiorNodeLabels = getLabelsInSet(jobName, setName=inDRM_NSetName, setType='node')
     DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName=outDRM_NSetName, setType='node')
     DRM_sideNodeLabels = DRM_interiorNodeLabels + DRM_exteriorNodeLabels
-    # TODO: Implement higher order quadrature rules
-    # NOTE: The simplest Gaussian quadrature is used here. Should be able to change it if needed.
-    # For more information: https://en.wikipedia.org/wiki/Gaussian_quadrature
-    integrationPoints = 1/np.sqrt(3) * np.array([[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-        [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1]])
-    weighting = [[1, 1, 1] for i in range(8)]
-    print('Preliminaries: %f sec'%(time()-tic))
-    drmK, drmM, drmC = getGlobalMatrices(integrationPoints, weighting, DRM_elements, DRM_sideNodeLabels, nodes, 
+    print('Preliminaries: %f sec'%(time()-tic)) 
+    GaussQuadOrder = 2
+    drmK, drmM, drmC = getGlobalMatrices(GaussQuadOrder, DRM_elements, DRM_sideNodeLabels, nodes, 
         isHomogeneous=isHomogeneous, jobName=jobName, materialName=materialName)
     # NOTE: when dispHistoryFileName is not None, it will turn to the old way to get history for DRM elements. 
     # Note that the old way does not consider whether the coordinate is converted.

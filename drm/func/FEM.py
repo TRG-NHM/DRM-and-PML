@@ -1,5 +1,6 @@
 import numpy as np
 from getDataFromInputFile import getMaterialPropertiesFromInputFile
+# from get_MPI_data import get_MPI_data
 
 def getShapeFunction(xi: float, eta: float, zeta: float) -> tuple[np.array, np.array]:
     ''' getShapeFunction returns shape functions, N (1-by-8 array), and its derivative, dN. 
@@ -89,7 +90,33 @@ def getElementMassMatrix(density: float, N: np.array, J: np.array, wXi: float, w
     eleM = density*np.matmul(N.transpose(), N)*J_det*wXi*wEta*wZeta
     return eleM
 
-def getGlobalMatrices(integrationPoints: np.array, weighting: list, DRM_elements: dict[int, list[int]], DRM_sideNodeLabels: list[int], nodes:  dict[int, list[float]], 
+def get3DGaussQuadPoints(order: int) -> tuple[list, list]:
+    ''' getGaussQuadPoints returns the Gauss quadrature points and weights. '''
+    if order == 1:
+        integrationPoints = [0]
+        weights = [2]
+    elif order == 2:
+        integrationPoints = [-1/np.sqrt(3), 1/np.sqrt(3)]
+        weights = [1, 1]
+    elif order == 3:
+        integrationPoints = [-np.sqrt(3/5), 0, np.sqrt(3/5)]
+        weights = [5/9, 8/9, 5/9]
+    return integrationPoints, weights
+
+# def AssembleMatrixFromMPI(matrix: np.array, numElements: int, comm, size, rank, isLast=False) -> np.array:
+#     if rank > 0:
+#         comm.send(matrix, dest=0, tag=41) # tag is arbitrary
+#         if isLast:
+#             exit() # only keeping the first processor after sending the collected data to it.
+#     else:
+#         for i in range(1, size):
+#             if i >= numElements:
+#                 break
+#             tmp = comm.recv(source=i, tag=41)
+#             matrix += tmp
+#         return matrix
+
+def getGlobalMatrices(GaussQuadOrder: int, DRM_elements: dict[int, list[int]], DRM_sideNodeLabels: list[int], nodes:  dict[int, list[float]], 
     materialFileName='ElementMaterial.txt', isHomogeneous=False, jobName=None, materialName=None) -> tuple[np.array, np.array, np.array]:
     """ Returns K, M, C matrices for DRM elements """
     nDOF = 3*len(DRM_sideNodeLabels)
@@ -106,23 +133,46 @@ def getGlobalMatrices(integrationPoints: np.array, weighting: list, DRM_elements
         with open(materialFileName, 'r') as f:
             lines = f.readlines()
         materialFileLowerLines = [line.lower() for line in lines] # For case insensitive search
-    for i, intP in enumerate(integrationPoints):
-        N, dN = getShapeFunction(*intP)
-        for eleLabel, nodeLabels in DRM_elements.items():
-            # TODO: MPI can be implemented here
-            if not isHomogeneous: # heterogeneous
-                materialName = 'MATERIAL-'+str(eleLabel)
-                density, youngsModulus, poissonsRatio, alpha, beta = getMaterialPropertiesFromInputFile(materialName, lowerLines=materialFileLowerLines)
-                D = getStiffnessMatrix(youngsModulus, poissonsRatio)
-            J = getJacobian(np.array([nodes[label] for label in nodeLabels]), dN)
-            eleK = getElementStiffnessMatrix(D, J, dN, *weighting[i])
-            eleM = getElementMassMatrix(density, N, J, *weighting[i])
-            eleC = alpha*eleK + beta*eleM
-            nodeIndices = [DRM_sideNodeLabels.index(label) for label in nodeLabels]
-            globalDOF = [label for nodeIndex in nodeIndices for label in range(3*nodeIndex, 3*nodeIndex+3)]
-            # NOTE: Although this approach utilizes Advanced indexing (not Basic indexing, thus creates a copy every time), 
-            # it's still faster than a double for loop with single element indexing (one kind of Basic indexing).
-            drmK[np.ix_(globalDOF, globalDOF)] += eleK
-            drmM[np.ix_(globalDOF, globalDOF)] += eleM
-            drmC[np.ix_(globalDOF, globalDOF)] += eleC
+    integrationPoints, weights = get3DGaussQuadPoints(GaussQuadOrder)
+    # NOTE: Although it's possible to use MPI to distribute the computation of each element, the improvement is not significant (since this is not the major bottleneck) and makes the code more complicated.
+    # eleLabels = list(DRM_elements.keys())
+    # MPI_enabled, comm, size, rank = get_MPI_data()
+    # if MPI_enabled:
+    #     numElements = len(eleLabels)
+    #     if rank > numElements:
+    #         exit() # The requested number of processors exceeds the number of elements (although this is very unlikely to happen)
+    #     numDistributedElements = int(numElements/size)
+    #     if rank+1 == size: # The last thread
+    #         eleLabels = eleLabels[rank*numDistributedElements:numElements]
+    #     else:
+    #         eleLabels = eleLabels[rank*numDistributedElements:(rank+1)*numDistributedElements]
+    # for eleLabel in eleLabels:
+    #     nodeLabels = DRM_elements[eleLabel]
+    for eleLabel, nodeLabels in DRM_elements.items():
+        if not isHomogeneous: # heterogeneous
+            materialName = 'MATERIAL-'+str(eleLabel)
+            density, youngsModulus, poissonsRatio, alpha, beta = getMaterialPropertiesFromInputFile(materialName, lowerLines=materialFileLowerLines)
+            D = getStiffnessMatrix(youngsModulus, poissonsRatio)
+        for i, xi in enumerate(integrationPoints):
+            wXi = weights[i]
+            for j, eta in enumerate(integrationPoints):
+                wEta = weights[j]
+                for k, zeta in enumerate(integrationPoints):
+                    wZeta = weights[k]
+                    N, dN = getShapeFunction(xi, eta, zeta)
+                    J = getJacobian(np.array([nodes[label] for label in nodeLabels]), dN)
+                    eleK = getElementStiffnessMatrix(D, J, dN, wXi, wEta, wZeta)
+                    eleM = getElementMassMatrix(density, N, J, wXi, wEta, wZeta)
+                    eleC = alpha*eleK + beta*eleM
+                    nodeIndices = [DRM_sideNodeLabels.index(label) for label in nodeLabels]
+                    globalDOF = [label for nodeIndex in nodeIndices for label in range(3*nodeIndex, 3*nodeIndex+3)]
+                    # NOTE: Although this approach utilizes Advanced indexing (not Basic indexing, thus creates a copy every time), 
+                    # it's still faster than a double for loop with single element indexing (one kind of Basic indexing).
+                    drmK[np.ix_(globalDOF, globalDOF)] += eleK
+                    drmM[np.ix_(globalDOF, globalDOF)] += eleM
+                    drmC[np.ix_(globalDOF, globalDOF)] += eleC
+    # if MPI_enabled:
+    #     drmK = AssembleMatrixFromMPI(drmK, numElements, comm, size, rank)
+    #     drmM = AssembleMatrixFromMPI(drmM, numElements, comm, size, rank)
+    #     drmC = AssembleMatrixFromMPI(drmC, numElements, comm, size, rank, isLast=True)
     return drmK, drmM, drmC
