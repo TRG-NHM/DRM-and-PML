@@ -1,6 +1,5 @@
 import numpy as np
 from getDataFromInputFile import getMaterialPropertiesFromInputFile
-# from get_MPI_data import get_MPI_data
 
 def getShapeFunction(xi: float, eta: float, zeta: float) -> tuple[np.array, np.array]:
     ''' getShapeFunction returns shape functions, N (1-by-8 array), and its derivative, dN. 
@@ -103,19 +102,6 @@ def get3DGaussQuadPoints(order: int) -> tuple[list, list]:
         weights = [5/9, 8/9, 5/9]
     return integrationPoints, weights
 
-# def AssembleMatrixFromMPI(matrix: np.array, numElements: int, comm, size, rank, isLast=False) -> np.array:
-#     if rank > 0:
-#         comm.send(matrix, dest=0, tag=41) # tag is arbitrary
-#         if isLast:
-#             exit() # only keeping the first processor after sending the collected data to it.
-#     else:
-#         for i in range(1, size):
-#             if i >= numElements:
-#                 break
-#             tmp = comm.recv(source=i, tag=41)
-#             matrix += tmp
-#         return matrix
-
 def getGlobalMatrices(GaussQuadOrder: int, DRM_elements: dict[int, list[int]], DRM_sideNodeLabels: list[int], nodes:  dict[int, list[float]], 
     materialFileName='ElementMaterial.txt', isHomogeneous=False, jobName=None, materialName=None) -> tuple[np.array, np.array, np.array]:
     """ Returns K, M, C matrices for DRM elements """
@@ -134,20 +120,6 @@ def getGlobalMatrices(GaussQuadOrder: int, DRM_elements: dict[int, list[int]], D
             lines = f.readlines()
         materialFileLowerLines = [line.lower() for line in lines] # For case insensitive search
     integrationPoints, weights = get3DGaussQuadPoints(GaussQuadOrder)
-    # NOTE: Although it's possible to use MPI to distribute the computation of each element, the improvement is not significant (since this is not the major bottleneck) and makes the code more complicated.
-    # eleLabels = list(DRM_elements.keys())
-    # MPI_enabled, comm, size, rank = get_MPI_data()
-    # if MPI_enabled:
-    #     numElements = len(eleLabels)
-    #     if rank > numElements:
-    #         exit() # The requested number of processors exceeds the number of elements (although this is very unlikely to happen)
-    #     numDistributedElements = int(numElements/size)
-    #     if rank+1 == size: # The last thread
-    #         eleLabels = eleLabels[rank*numDistributedElements:numElements]
-    #     else:
-    #         eleLabels = eleLabels[rank*numDistributedElements:(rank+1)*numDistributedElements]
-    # for eleLabel in eleLabels:
-    #     nodeLabels = DRM_elements[eleLabel]
     for eleLabel, nodeLabels in DRM_elements.items():
         if not isHomogeneous: # heterogeneous
             materialName = 'MATERIAL-'+str(eleLabel)
@@ -171,8 +143,4 @@ def getGlobalMatrices(GaussQuadOrder: int, DRM_elements: dict[int, list[int]], D
                     drmK[np.ix_(globalDOF, globalDOF)] += eleK
                     drmM[np.ix_(globalDOF, globalDOF)] += eleM
                     drmC[np.ix_(globalDOF, globalDOF)] += eleC
-    # if MPI_enabled:
-    #     drmK = AssembleMatrixFromMPI(drmK, numElements, comm, size, rank)
-    #     drmM = AssembleMatrixFromMPI(drmM, numElements, comm, size, rank)
-    #     drmC = AssembleMatrixFromMPI(drmC, numElements, comm, size, rank, isLast=True)
     return drmK, drmM, drmC
