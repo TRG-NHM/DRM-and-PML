@@ -16,15 +16,24 @@ def getNextKeywordLine(lines: list[str], startLine=0) -> int | None:
             return startLine + i
     return None
 
-def getNextLineIndexStartsWith(lines: list[str], heading='*', startLine=0, isConversionNeeded=True) -> int | None:
-    if isConversionNeeded and heading != '*': # NOTE: This is used to make the search case insensitive due to different input file writing preferences
-        lowerLines = [line.lower() for line in lines[startLine:]]
-    else:
-        lowerLines = lines[startLine:]
+def getNextLineIndexStartsWith(lines: list[str], heading='*', startLine=0, isConversionNeeded=True, isReversed=False) -> int | None:
     lowerHeading = heading.lower()
-    for lineIndex, line in enumerate(lowerLines):
-        if line.startswith(lowerHeading):
-            return startLine+lineIndex
+    if not isReversed:
+        if isConversionNeeded and heading != '*': # NOTE: This is used to make the search case insensitive due to different input file writing preferences
+            lowerLines = [line.lower() for line in lines[startLine:]]
+        else:
+            lowerLines = lines[startLine:]
+        for lineIndex, line in enumerate(lowerLines):
+            if line.startswith(lowerHeading):
+                return startLine+lineIndex
+    else:
+        if isConversionNeeded and heading != '*': # NOTE: This is used to make the search case insensitive due to different input file writing preferences
+            lowerLines = [line.lower() for line in lines[:startLine+1]]
+        else:
+            lowerLines = lines[:startLine+1]
+        for lineIndex, line in enumerate(reversed(lowerLines)):
+            if line.startswith(lowerHeading):
+                return startLine-lineIndex
     return None
 
 def getAllLinesIndicesStartsWith(lines: list[str], heading='*', startLine=0, isConversionNeeded=True) -> list[int]:

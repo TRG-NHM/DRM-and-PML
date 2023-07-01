@@ -107,12 +107,12 @@ def IstanbulModel(stepNum: int) -> None:
     beta = 0
     # =====
     jobName = 'Istanbul_model'
-    subroutineFileName = 'PML3dUEL912.for'
+    subroutineFileName = 'PML3dUEL_Inhomogeneous_2791.for'
     timeIncrement = 0.01 # unit: sec. This should be read from the site response file
     duration = 39.99 # unit: sec. This should be read from the site response file
     origin = (41.0318, 28.9417)
     isCoordinateConverted = True
-    isOriginAtCenter = True
+    isOriginAtCenter = False
     # ===== Hercules model information =====
     HerculesInputFilePath = '../Cases/Abaqus Steel Building Model from Bulent/Istanbul_sim55/inputfiles/parameters_FullRegion_all_station_topo_final.in'
     HerculesData = hercules.getInputData(HerculesInputFilePath)
