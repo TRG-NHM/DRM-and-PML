@@ -9,7 +9,8 @@ def modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta
     isHomogeneous=True, stepName=None, dummyElementType='C3D8R', userElementType='U3',
     preInputFileName=None, modelType=None, cLoadFileName='Cload.txt',
     materialFileName='ElementMaterial.txt', elementSetFileName='ElementSet.txt', 
-    sectionFileName='ElementSection.txt', PMLMaterialFileName='ElementPML.txt'):
+    sectionFileName='ElementSection.txt', PMLMaterialFileName='ElementPML.txt',
+    boundaryName=None):
     ''' Modify Abaqus input file. '''
     if preInputFileName is None:
         if modelType is None:
@@ -46,14 +47,29 @@ def modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta
         # Insert material property file
         endAssemblyLine = getLineIndex(lines, '*End Assembly\n')
         lines.insert(endAssemblyLine+1, '*Include, input=%s\n'%materialFileName)
-    # Insert the step-related file (cLoad file)
     if modelType != 'static':
+        # Insert the step-related file (cLoad file)
         if stepName is None:
             stepLine = getNextLineIndexStartsWith(lines, heading='*Step')
         else:
             stepLine = getNextLineIndexStartsWith(lines, heading='*Step, name=%s'%stepName)
         endStepLine = getLineIndex(lines, '*End Step\n', startLine=stepLine+1)
         lines.insert(endStepLine, '*Include, input=%s\n'%cLoadFileName)
+        # Deactivate the boundary conditions in the dynamic step
+        if boundaryName is None:
+            boundaryPreLine = getNextLineIndexStartsWith(lines, heading='** BOUNDARY CONDITIONS')
+            boundaryLine = getNextLineIndexStartsWith(lines, heading='*Boundary', startLine=boundaryPreLine)
+        else:
+            boundaryNameLine = getNextLineIndexStartsWith(lines, heading='** Name: %s'%boundaryName)
+            boundaryPreLine = getNextLineIndexStartsWith(lines, heading='** BOUNDARY CONDITIONS', startLine=boundaryNameLine, isReversed=True)
+            boundaryLine = getNextLineIndexStartsWith(lines, heading='*Boundary', startLine=boundaryNameLine)
+        boundaryEndLine = getNextKeywordLine(lines, startLine=boundaryLine+1)
+        boundaryLines = lines[boundaryPreLine:boundaryEndLine].copy()
+        boundaryLine = getNextLineIndexStartsWith(boundaryLines, heading='*Boundary')
+        boundaryLines[boundaryLine] = '*Boundary, op=NEW\n'
+        dynamicStepLine = getNextLineIndexStartsWith(lines, heading='*Dynamic', startLine=stepLine+1)
+        endDynamicStepLine = getNextKeywordLine(lines, startLine=dynamicStepLine+1)
+        lines[endDynamicStepLine:endDynamicStepLine] = boundaryLines
     # /// Save inp file
     if modelType is None:
         inpName = jobName+'.inp'

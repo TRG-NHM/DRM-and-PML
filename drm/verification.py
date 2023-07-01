@@ -70,8 +70,8 @@ if __name__ == '__main__':
     # stations, AbaqusResults = getTimeHistoryFromStationAndAbaqusResult(stationFolder, AbaqusResultFolder)
     # plotAndSaveResults(locations, stations, AbaqusResults, outputFolder='./Verification')
     # /// CASE 2: IstanbulModel
-    stationFolder = '../Abaqus Steel Building Model from Bulent/Verification/stations'
-    AbaqusResultFolder = '../Abaqus Steel Building Model from Bulent/Verification/AbaqusResults'
+    stationFolder = '../Cases/Abaqus Steel Building Model from Bulent/Verification/stations'
+    AbaqusResultFolder = '../Cases/Abaqus Steel Building Model from Bulent/Verification/AbaqusResults'
     locations = {'Istanbul soil box top center': {'station': 0, 'nodeLabel': 29406}}
     truncateTime = [1.0, 40.99]
     stations, AbaqusResults = getTimeHistoryFromStationAndAbaqusResult(stationFolder, AbaqusResultFolder, truncateTime=truncateTime)
