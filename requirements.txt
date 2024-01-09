@@ -3,7 +3,7 @@ certifi~>2023.7.22
 contourpy~=1.1.0
 cycler~=0.11.0
 Cython~=0.29.35
-fonttools~=4.40.0
+fonttools>=4.43.0
 kiwisolver~=1.4.4
 matplotlib~=3.7.1
 mpi4py~=3.1.4
