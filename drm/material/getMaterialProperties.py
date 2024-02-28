@@ -1,5 +1,5 @@
 import ctypes
-import os
+# import os
 import numpy as np
 
 # NOTE: the c script has to be converted to .so file with the following command:

@@ -1,0 +1,29 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: DRM and PML
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Chu-Han
+    family-names: Yen
+    email: cliiffordyen@g.ucla.edu
+    affiliation: >-
+      Civil and Environmental Engineering, University of
+      California, Los Angeles
+repository-code: 'https://github.com/TRG-NHM/DRM-and-PML'
+repository: 'https://github.com/Clifford-Yen/DRM-and-PML'
+abstract: >-
+  The implementation of the Domain Reduction Method (DRM)
+  and Perfectly Matched Layer (PML) for Abaqus in Python
+keywords:
+  - Python
+  - Abaqus Script
+  - Abaqus
+  - Hercules
+  - Domain Reduction Method
+  - Perfectly Matched Layer
+license: MIT
