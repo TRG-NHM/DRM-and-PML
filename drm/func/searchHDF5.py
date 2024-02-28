@@ -7,7 +7,7 @@ from getDistance import getDistanceBetweenTwoCoordinates
 from get_MPI_data import get_MPI_data
 
 def getDistanceFromPlaneOrigin(targetPoint, planeData):
-    origin = planeData[:2]
+    origin = list(planeData[:2])
     return getDistanceBetweenTwoCoordinates(origin, targetPoint)
 
 def getProperFilter(planesData, gridPoints, outputFormat=str):
@@ -19,8 +19,8 @@ def getProperFilter(planesData, gridPoints, outputFormat=str):
     y_dis = [p[1] for p in gridPoints]
     depth = [p[2] for p in gridPoints]
     zList = planesData['z']
-    stepAlongStrike = planeData[3] # Distance between nodes in X direction (dstrk)
-    stepDownDip = planeData[5] # Distance between nodes in Y direction
+    stepAlongStrike = planeData.iloc[3] # Distance between nodes in X direction (dstrk)
+    stepDownDip = planeData.iloc[5] # Distance between nodes in Y direction
     filters = {'x': {'upper': max(x_dis)+stepAlongStrike, 'lower': min(x_dis)-stepAlongStrike}, 
         'y': {'upper': max(y_dis)+stepDownDip, 'lower': min(y_dis)-stepDownDip}, 
         'z': {'upper': zList[zList>=max(depth)].min(), 'lower': zList[zList<=min(depth)].max()}}

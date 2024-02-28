@@ -6,7 +6,7 @@ This repo is the implementation of the Domain Reduction Method (DRM) and Perfect
 
 There is no need to "install" this repo. Simply clone this repo via git commands or download it from this webpage as a zip file and extract it on your machine.
 
-However, to use this repo, you would need [Python](https://www.python.org/) 3 (>=3.10) and other required libraries. All required libraries are listed in the "requirements.txt" file, and you can easily install them with `pip`. 
+However, to use this repo, you would need [Python](https://www.python.org/) 3 (>=3.11) and other required libraries. All required libraries are listed in the "requirements.txt" file, and you can easily install them with `pip`. 
 
     python3 -m pip install -r requirements.txt
 
