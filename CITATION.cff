@@ -8,7 +8,7 @@ message: >-
   metadata from this file.
 type: software
 authors:
-  - given-names: Chu-Han (Clifford)
+  - given-names: Chu-Han
     family-names: Yen
     email: cliiffordyen@g.ucla.edu
     affiliation: >-
