@@ -1,5 +1,5 @@
 blosc2~=2.2.9
-certifi~=2023.7.22
+certifi~=2024.7.4
 contourpy~=1.2.0
 cycler~=0.12.1
 fonttools~=4.44.0
