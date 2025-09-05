@@ -15,7 +15,7 @@ def writeRawData(materialProperties: dict[int, list[float, float, float]], fileN
     df['youngsModulus'] = 2*df['G']*(1+df['poissonsRatio'])
     if minVs is not None:
         df['Vs_corrected'] = df['Vs']
-        df['Vs_corrected'][df['Vs'] < minVs] = 250
+        df.loc[df['Vs'] < minVs, 'Vs_corrected'] = 250
         df['poissonsRatio_corrected'] = (df['Vp']**2 - 2*df['Vs_corrected']**2)/(2*(df['Vp']**2 - df['Vs_corrected']**2))
         df['G_corrected'] = df['rho']*df['Vs_corrected']**2 # Shear Modulus
         df['youngsModulus_corrected'] = 2*df['G_corrected']*(1+df['poissonsRatio_corrected'])
@@ -27,7 +27,7 @@ def writeRawData(materialProperties: dict[int, list[float, float, float]], fileN
 # NOTE: Since we moved the model from its original place to another location, we have to get the material properties with given coordinates
 def writeMaterialPropertiesForElements(jobName, partName, origin, isCoordinateConverted=False, minVs=None, 
     materialFileName='ElementMaterial.txt', elementSetFileName='ElementSet.txt', sectionFileName='ElementSection.txt',
-    istanbulMaterialModelOrigin=(40.9565, 28.675), elementTypeOnPart='C3D8'):
+    istanbulMaterialModelOrigin=(40.9565, 28.675), elementTypeOnPart='C3D8', **kwargs):
     ''' NOTE: If the directions used in Abaqus model are EW, NS, and pointing up 
     from the earth, then isCoordinateConverted can be set to True to correct the 
     differences between the directions used in Hercules and Abaqus '''
@@ -79,7 +79,7 @@ def writeMaterialPropertiesForElements(jobName, partName, origin, isCoordinateCo
 
 def writeMaterialPropertiesForPMLElements(jobName, partName, origin, PML_depth, lengths, alpha=0.0, beta=0.0,
     isCoordinateConverted=False, minVs=None, materialFileName='ElementPML.txt', maxVpFileName='maxVpInPMLDomain.txt',
-    istanbulMaterialModelOrigin=(40.9565, 28.675), elementTypeOnPart='C3D8R', userElementType='U3'):
+    istanbulMaterialModelOrigin=(40.9565, 28.675), elementTypeOnPart='C3D8R', userElementType='U3', **kwargs):
     ''' NOTE: If the directions used in Abaqus model are EW, NS, and pointing up 
     from the earth, then isCoordinateConverted can be set to True to correct the 
     differences between the directions used in Hercules and Abaqus '''

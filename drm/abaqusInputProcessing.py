@@ -10,7 +10,7 @@ def modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta
     preInputFileName=None, modelType=None, cLoadFileName='Cload.txt',
     materialFileName='ElementMaterial.txt', elementSetFileName='ElementSet.txt', 
     sectionFileName='ElementSection.txt', PMLMaterialFileName='ElementPML.txt',
-    boundaryName=None):
+    boundaryName=None, **kwargs):
     ''' Modify Abaqus input file. '''
     if preInputFileName is None:
         if modelType is None:
@@ -80,7 +80,7 @@ def modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta
     return
 
 def getMaterialPropertiesAtCentroid(centroid, isAdjustmentNeeded=True, origin=None, 
-    istanbulMaterialModelOrigin=(40.9565, 28.675), minVs=None):
+    istanbulMaterialModelOrigin=(40.9565, 28.675), minVs=None, **kwargs):
     if isAdjustmentNeeded and origin is not None:
         distance, x_dis, y_dis = getDistanceBetweenTwoCoordinates(istanbulMaterialModelOrigin, origin)
         centroid = [centroid[0]+x_dis, centroid[1]+y_dis, centroid[2]]

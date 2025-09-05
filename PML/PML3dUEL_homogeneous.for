@@ -21,7 +21,7 @@
      2     KSTEP,KINC,JELEM,PARAMS,NDLOAD,JDLTYP,ADLMAG,PREDEF,NPREDF,
      3     LFLAGS,MLVARX,DDLMAG,MDLOAD,PNEWDT,JPROPS,NJPROP,PERIOD)
     !
-      INCLUDE 'aba_param.inc'
+      INCLUDE 'ABA_PARAM.INC'
     ! 
     !
       DIMENSION RHS(MLVARX,*),AMATRX(NDOFEL,NDOFEL),PROPS(*),
@@ -1887,7 +1887,7 @@
      3 NDI,NSHR,NTENS,NSTATV,PROPS,NPROPS,COORDS,DROT,PNEWDT,
      4 CELENT,DFGRD0,DFGRD1,NOEL,NPT,LAYER,KSPT,KSTEP,KINC)
 !
-      INCLUDE 'aba_param.inc'
+      INCLUDE 'ABA_PARAM.INC'
 !     WARNING - the aba_param.inc file declares
 !        Implicit real*8(a-h,o-z)
 !     This means that, by default, any variables with
@@ -1912,13 +1912,13 @@
         E = props(1)
 	xnu = props(2)
       
-      IF(coords(3) > -10.d0) THEN
-          Vs = 200.d0
-      ELSE IF(coords(3) > -20.d0) THEN
-          Vs = 300.d0
-      ELSE
-          Vs = 400.d0
-      ENDIF
+      ! IF(coords(3) > -10.d0) THEN
+      !     Vs = 200.d0
+      ! ELSE IF(coords(3) > -20.d0) THEN
+      !     Vs = 300.d0
+      ! ELSE
+      !     Vs = 400.d0
+      ! ENDIF
         
       E = (2000.d0*Vs**2.d0)*2.d0*(1.d0+xnu)  
 

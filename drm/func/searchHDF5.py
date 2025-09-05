@@ -5,16 +5,19 @@ from scipy.interpolate import RegularGridInterpolator
 from shapely.geometry import Point, Polygon
 from getDistance import getDistanceBetweenTwoCoordinates
 from get_MPI_data import get_MPI_data
+from time import time
+from tqdm import tqdm
 
 def getDistanceFromPlaneOrigin(targetPoint, planeData):
     origin = list(planeData[:2])
     return getDistanceBetweenTwoCoordinates(origin, targetPoint)
 
-def getProperFilter(planesData, gridPoints, outputFormat=str):
+def getProperFilter(planesData: pd.DataFrame, gridPoints: list[list[float]], 
+    outputFormat: dict|str = str):
     # NOTE: gridPoints should be in meters
     if type(gridPoints[0]) is not list: # If there is only one point
         gridPoints = [gridPoints]
-    planeData = planesData.loc[0]
+    planeData = planesData.iloc[0]
     x_dis = [p[0] for p in gridPoints]
     y_dis = [p[1] for p in gridPoints]
     depth = [p[2] for p in gridPoints]
@@ -84,6 +87,8 @@ def getCollectedResultFromMPI(listData, numDomains, comm, size, rank):
             listData += tmp
         return listData
 
+# TODO: domainSurfaceCorners is no longer written in the HDF5 file.
+# Maybe compute it back or find another way to define the domain surface.
 def isPointWithinDomain(targetPoint, dbPath):
     planesData = pd.read_hdf(dbPath, 'planesData')
     domainSurfaceCorners = pd.read_hdf(dbPath, 'domainSurfaceCorners')
@@ -107,13 +112,13 @@ def getAllPossiblePlaneKeys(planesData, gridPoints):
     possibleZ = zList[(zList>=minZ) & (zList<=maxZ)]
     return ['plane%i'%i for i in planesData.index if planesData.loc[i]['z'] in possibleZ.values]
 
-def getCheckAndConvertGridPoints(dbPath, gridPoints, gridPointsInMeter=False):
+def getCheckedAndConvertedGridPoints(dbPath, gridPoints, gridPointsInMeter=False):
     planesData = pd.read_hdf(dbPath, 'planesData')
     convertedGridPoints = []
     for targetPoint in gridPoints:
         # TODO: Capability to check whether a point is within the domain if gridPointsInMeter=True
-        if not isPointWithinDomain(targetPoint, dbPath) and gridPointsInMeter is False:
-            return 'The inquiry point is not located within the domain.'
+        # if not isPointWithinDomain(targetPoint, dbPath) and gridPointsInMeter is False:
+        #     return 'The inquiry point is not located within the domain.'
         if gridPointsInMeter:
             targetPointInMeter = targetPoint
         else:
@@ -122,7 +127,10 @@ def getCheckAndConvertGridPoints(dbPath, gridPoints, gridPointsInMeter=False):
         convertedGridPoints.append(targetPointInMeter)
     return convertedGridPoints
 
-def getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=None, gridPointsInMeter=False):
+def getInterpolatedHistoryDataForGridPoints(gridPoints: list[list[float]]|list[float], 
+        dbPath: str, pointLabelList: list[int]|None = None, gridPointsInMeter: bool = False,
+        planeIndices: list[int]|None = None, **kwargs):
+    tic = time()
     if type(gridPoints[0]) is not list: # If there is only one point
         gridPoints = [gridPoints]
     numDomains = len(gridPoints)
@@ -132,13 +140,16 @@ def getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=N
     if not MPI_enabled or (MPI_enabled and rank == 0):
         # Construct a minimum Pandas DataFrame (`df`) that contains the whole interested domain (`gridPoints`)
         planesData = pd.read_hdf(dbPath, 'planesData')
+        if planeIndices is not None:
+            planesData = planesData.loc[planeIndices]
         planeKeys = getAllPossiblePlaneKeys(planesData, gridPoints)
-        gridPoints = getCheckAndConvertGridPoints(dbPath, gridPoints, gridPointsInMeter)
+        gridPoints = getCheckedAndConvertedGridPoints(dbPath, gridPoints, gridPointsInMeter)
         filters = getProperFilter(planesData, gridPoints)
         df = pd.read_hdf(dbPath, key=planeKeys[0], where=filters) # get filtered dataset from the HDF5 file
         for planeKey in planeKeys[1:]:
             newData = pd.read_hdf(dbPath, key=planeKey, where=filters)
             df = pd.concat([df, newData])
+        print('Preliminaries: %.2f secs' % (time() - tic))
     else:
         df = None
         planesData = None
@@ -156,11 +167,13 @@ def getInterpolatedHistoryDataForGridPoints(gridPoints, dbPath, pointLabelList=N
             gridPoints = gridPoints[rank*numDistributedDomains:(rank+1)*numDistributedDomains]
             pointLabelList = pointLabelList[rank*numDistributedDomains:(rank+1)*numDistributedDomains]
     interpolatedData = []
-    for i, targetPointInMeter in enumerate(gridPoints):
+    for i, targetPointInMeter in tqdm(enumerate(gridPoints), total=len(gridPoints), 
+        position=rank, desc=f'Processor {rank} - Interpolating history data'):
         newInterpolatedData, columns = getInterpolatedHistoryData(targetPointInMeter, df, planesData, returnType=list)
         interpolatedData.extend([[pointLabelList[i]]+line for line in newInterpolatedData])
     if MPI_enabled:
         interpolatedData = getCollectedResultFromMPI(interpolatedData, numDomains, comm, size, rank)
+        print('Combining results from all MPI processes: %.2f secs' % (time() - tic))
     df = pd.DataFrame(interpolatedData, columns=columns.insert(0, 'pointLabel'))
     return df
 
@@ -184,6 +197,67 @@ def getInterpolatedHistoryData(targetPointInMeter, df, planesData, returnType=pd
     else: # returnType is pd.DataFrame
         df = pd.DataFrame(interpolatedData, columns=df.columns)
         return df
+
+def alignGridPoints(gridPoints: pd.DataFrame, plane: pd.DataFrame, 
+        allowance: float = 0.1, **kwargs) -> None:
+    '''
+    Align the x and y coordinates of gridPoints to the closest grid point in the plane.
+    This function modifies the gridPoints DataFrame in place.
+    '''
+    for comp in ['x', 'y']:
+        completedPointLabels = []
+        for pointLabel, point in tqdm(gridPoints.iterrows(), desc='Aligning grid points in %s-axis' % comp):
+            if pointLabel in completedPointLabels:
+                continue
+            closestPoints = plane[(plane[comp] >= point[comp] - allowance) & 
+                                  (plane[comp] <= point[comp] + allowance)]
+            if closestPoints.empty:
+                raise ValueError("No data found for pointLabel %i. " \
+                    "Consider increasing the allowance." % (pointLabel))
+            closestCompValue = closestPoints[comp].unique()
+            if closestCompValue.size > 1:
+                raise ValueError("Multiple closest %s components found for pointLabel %i. " \
+                    "Consider decreasing the allowance." % (comp, pointLabel))
+            subset = gridPoints.loc[(gridPoints[comp] == point[comp])]
+            gridPoints.loc[subset.index, comp] = closestCompValue
+            completedPointLabels.extend(subset.index.tolist())
+    return None
+
+def getNearestHistoryDataForGridPoints(gridPoints: list[list[float]]|list[float], 
+    dbPath: str, pointLabelList: list[int]|None = None, planeIndices: list[int]|None = None, 
+    **kwargs):
+    if type(gridPoints[0]) is not list: # If there is only one point
+        gridPoints = [gridPoints]
+    if pointLabelList is None:
+        pointLabelList = list(range(1, len(gridPoints)+1))
+    gridPoints = pd.DataFrame(gridPoints, columns=['x', 'y', 'z'], index=pointLabelList)
+    # NOTE: Users should ensure planes used have the same horizontal dimensions, 
+    # same origin, but unique z.
+    # TODO: Implement MPI
+    planesData = pd.read_hdf(dbPath, 'planesData')
+    if planeIndices is not None:
+        planesData = planesData.loc[planeIndices]
+    alignGridPoints(gridPoints, pd.read_hdf(dbPath, key='plane%i'%planesData.index[0]), **kwargs)
+    df = pd.DataFrame()
+    for i, planeData in planesData.iterrows():
+        print("Processing plane %i: " % i)
+        plane = pd.read_hdf(dbPath, key='plane%i'%i)
+        plane.insert(0, 'pointLabel', 0)
+        gP = gridPoints[gridPoints['z'] == planeData['z']]
+        if gP.empty:
+            print("No grid points found for plane %i at z = %f. Skipping..." % (i, planeData['z']))
+            continue
+        newDataIndices = []
+        for pointLabel, point in tqdm(gP.iterrows()):
+            newData = plane[(plane['x'] == point['x']) & (plane['y'] == point['y'])]
+            if newData.empty:
+                raise ValueError("No data found for pointLabel %i at plane %i. " \
+                    "Making sure all planes have the same grid except z value." % (pointLabel, i))
+            plane.loc[newData.index, 'pointLabel'] = pointLabel
+            newDataIndices.extend(newData.index.to_list())
+        df = pd.concat([df, plane.loc[newDataIndices]])
+    df.reset_index(drop=True, inplace=True)
+    return df
 
 def getGrid(cornerPoints, depth, numNodes=3):
     gridPoints = []
@@ -236,12 +310,22 @@ def getPointsFromCSV(f):
 
 # TODO: Adjustment if the Abaqus model origin is not same as Hercules' database (practically 
 # every case) and axes are not aligned to latitude and longitude direction
-def getConvertedGridPointsForAbaqusModel(dbPath, nodes, origin=None, gridPointsInMeter=False):
+def getConvertedGridPointsForAbaqusModel(dbPath: str, nodes: list[list[float]], 
+        origin: tuple[float]|None = None, gridPointsInMeter: bool = False, 
+        isCoordinateConverted: bool = False, planeIndices: list[int] = [0], 
+        **kwargs):
     # istanbulProj = pyproj.Proj('+proj=utm +ellps=WGS84 +units=m +lat_0=%f +lon_0=%f'%(origin[0], origin[1]))
     if gridPointsInMeter is False:
         raise ValueError("Grid Point Conversion with Latitude and Longitude is not yet supported.")
     planesData = pd.read_hdf(dbPath, 'planesData')
     if origin is not None:
-        distance, x_dis, y_dis = getDistanceFromPlaneOrigin(origin, planesData.loc[0])
-        gridPoints = [[node[0]+x_dis, node[1]+y_dis, node[2]] for node in nodes]
+        distance, x_dis, y_dis = getDistanceFromPlaneOrigin(origin, planesData.loc[planeIndices[0]])
+        if isCoordinateConverted:
+            # NOTE: If the directions used in Abaqus model are EW, NS, and pointing up from the earth,
+            # then isCoordinateConverted can be set to True to correct the differences between the directions used in Hercules and Abaqus.
+            gridPoints = [[node[1]+x_dis, node[0]+y_dis, -node[2]] for node in nodes]
+        else:
+            gridPoints = [[node[0]+x_dis, node[1]+y_dis, node[2]] for node in nodes]
+    elif isCoordinateConverted: # origin is None
+        gridPoints = [[node[1], node[0], -node[2]] for node in nodes]
     return gridPoints

@@ -2,7 +2,7 @@ import argparse
 from func import hercules
 from func.getEquivalentForces import getEquivalentForces
 from func.writeHistoryOutputForDRM import writeDisplacementHistoryForDRM
-from func.getNodes import writeNodeTable
+# from func.getNodes import writeNodeTable
 from abaqusInputProcessing import getMaterialPropertiesAtCentroid, writeDataForCreatingAbaqusModel, modifyInput
 from writeMaterialProperties import writeMaterialPropertiesForElements, writeMaterialPropertiesForPMLElements
 
@@ -16,67 +16,66 @@ def prospectusModel(stepNum: int) -> None:
         step 3: writeDisplacementHistoryForDRM (MPI can be used in this step)
         step 4: getEquivalentForces 
         NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file '''
-    dbPath = '../HerculesDatabaseInquirySystem/database/planedisplacements.hdf5'
-    # ===== Abaqus model information =====
-    # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
-    # total length of the part (including the interested domain, DRM layer, and PML layer).
-    lengths = {'x': 100, 'y': 100, 'z': 100}
-    DRM_depth = 5 # The thickness of the DRM layer should be the mesh size used in the Abaqus model
-    PML_depth = DRM_depth*5 # Could be ranged from 5 to 10 times of the thickness of DRM. But 5 is good enough.
-    partName = 'Part-Soil'
-    materialName = 'soil'
-    # ===== Rayleigh Damping =====
-    alpha = 0
-    beta = 0
+    kwargs = {
+        'dbPath': '/Volumes/CORSAIR/Hercules/Cases/Istanbul M6p81/1Hz_Hoffman2/database/planedisplacements.hdf5',
+        'planeIndices': list(range(133, 141)), # The plane indices used for writeDisplacementHistoryForDRM.
+        'matchMethod': 'interpolated',
+        'dispHistoryFileName': 'DispHistory.hdf5',
+        # ===== Abaqus model information =====
+        # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
+        # total length of the part (including the interested domain, DRM layer, and PML layer).
+        'lengths': {'x': 100, 'y': 100, 'z': 100},
+        'DRM_depth': 5, # The thickness of the DRM layer should be the mesh size used in the Abaqus model
+        'partName': 'Part-Soil',
+        'materialName': 'soil',
+        'jobName': 'DRM_PML_Analysis',
+        'subroutineFileName': 'PML3dUEL_homogeneous.for',
+        'timeIncrement': 0.1, # unit: sec. This should be read from the site response file
+        'duration': 44.9, # unit: sec. This should be read from the site response file
+        'origin': (41.021874, 28.885526),
+        'noDamping': True,
+        'stepApplication': 'moderate dissipation',
+        'isStaticStepIncluded': False,
+        # ===== Rayleigh Damping =====
+        'alpha': 0,
+        'beta': 0
+    }
+    kwargs['PML_depth'] = kwargs['DRM_depth']*5 # Could be ranged from 5 to 10 times of the thickness of DRM. But 5 is good enough.
     # =====
-    jobName = 'DRM_PML_Analysis'
-    subroutineFileName = 'PML3dUEL912.for'
-    timeIncrement = 0.05 # unit: sec. This should be read from the site response file
-    duration = 29.95 # unit: sec. This should be read from the site response file
-    origin = (41.022024713821054, 28.88575077152881)
-    noDamping = True
-    stepApplication = 'moderate dissipation'
-    isStaticStepIncluded = False
     if stepNum == 1:
         # ===== Hercules model information =====
-        HerculesInputFilePath = '../Cases/Mw5p83/inputfiles/parameters_ZDistrictDRM.in'
+        HerculesInputFilePath = 'inputfiles/parameters.in'
         HerculesData = hercules.getInputData(HerculesInputFilePath)
-        minVs = float(HerculesData['simulation_shear_velocity_min'])
+        kwargs['minVs'] = float(HerculesData['simulation_shear_velocity_min'])
         # ===== Get material properties =====
-        centroid = [x/2 for x in lengths.values()]
-        youngsModulus, poissonsRatio, density = getMaterialPropertiesAtCentroid(centroid, origin=origin, minVs=minVs)
+        kwargs['centroid'] = [x/2 for x in kwargs['lengths'].values()]
+        youngsModulus, poissonsRatio, density = getMaterialPropertiesAtCentroid(**kwargs)
         # ===== Write data for creating Abaqus model =====
         # NOTE: All the lengths are the total length of the part (including the interested domain, DRM layer, and PML layer).
-        dataForAbaqusModel = {'length_x': lengths['x'], 'length_y': lengths['y'], 'length_z': lengths['z'], 
-            'DRM_depth': DRM_depth, 'PML_depth': PML_depth,
-            'partName': partName, 'materialName': materialName, 
-            'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density, 
-            'alpha': alpha, 'beta': beta, 
-            'jobName': jobName, 'subroutineFileName': subroutineFileName,
-            'timeIncrement': timeIncrement, 'duration': duration,
-            'noDamping': noDamping, 'stepApplication': stepApplication,
-            'isStaticStepIncluded': isStaticStepIncluded}
+        dataForAbaqusModel = {'length_'+axis: kwargs['lengths'][axis] for axis in ['x', 'y', 'z']} \
+            | {'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density} \
+            | kwargs
         writeDataForCreatingAbaqusModel(dataForAbaqusModel)
         # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
         # After the _pre.inp file generated, move the _pre.inp file back.
     elif stepNum == 2:
         # For homogeneous model without static step:
-        modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta)
+        modifyInput(**kwargs)
     elif stepNum == 3:
         # ===== Getting the displacement histories for DRM nodes =====
         # NOTE: mpirun works here
         import timeit
         numExec = 1
-        print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: writeDisplacementHistoryForDRM(dbPath, jobName, partName, origin), number=numExec)/numExec))
-        # df = writeDisplacementHistoryForDRM(jobName, partName, origin)
+        print('Averaged Elapsed Time: %.2f secs' % (timeit.timeit(lambda: writeDisplacementHistoryForDRM(**kwargs), number=numExec)/numExec))
     elif stepNum == 4:
         # ===== Compute the equivalent forces =====
-        getEquivalentForces(jobName, partName, isHomogeneous=True, dispHistoryFileName='DispHistory.csv', materialName=materialName)
+        kwargs['isHomogeneous'] = True
+        getEquivalentForces(**kwargs)
         # NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file
     else:
         raise ValueError('There are only 4 steps.')
     # NOTE: After completing the Abaqus analysis, open the .odb file and run plotAndSave.py in Abaqus to get the desired results.
-    # Additionally and optionally, verification.py can be used to plot the results above and compare it with the ground truths (e.g., DispHistory.csv generated based on HDF5 database).
+    # Additionally and optionally, verification.py can be used to plot the results above and compare it with the ground truths (e.g., Hercules' station files).
     return
 
 def IstanbulModel(stepNum: int) -> None:
@@ -90,48 +89,55 @@ def IstanbulModel(stepNum: int) -> None:
         ElementSection.txt, ElementMaterial.txt, ElementPML.txt, and PML3dUEL_Inhomogeneous.for manually 
         modified with maxVp in maxVpInPMLDomain.txt) to the Abaqus working directory and run the static 
         analysis and get RF.txt by running getReactionForce.py, then move RF.txt back.
+        ('abaqus viewer odb=Istanbul_model_static.odb script=getReactionForce.py' can do the trick.)
+        ===== The following is no longer needed ==== 
         In addition, the generated nodeTable.csv should be used to specify stations in Hercules' input 
         file and run Hercules analysis to generate station files.
-        step 3: getEquivalentForces 
-        NOTE: After this step, move Cload.txt to the Abaqus working directory and run the complete analysis '''
-    # ===== Abaqus model information =====
-    # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
-    # total length of the part (including the interested domain, DRM layer, and PML layer).
-    lengths = {'x': 100, 'y': 100, 'z': 30}
-    DRM_depth = 2 # The thickness of the DRM layer should be the mesh size used in the Abaqus model
-    PML_depth = DRM_depth*5 # Could be ranged from 5 to 10 times of the thickness of DRM. But 5 is good enough.
-    partName = 'Part-Soil'
-    materialName = 'soil'
-    # ===== Rayleigh Damping =====
-    alpha = 0
-    beta = 0
-    # =====
-    jobName = 'Istanbul_model'
-    subroutineFileName = 'PML3dUEL_Inhomogeneous_2791.for'
-    timeIncrement = 0.01 # unit: sec. This should be read from the site response file
-    duration = 39.99 # unit: sec. This should be read from the site response file
-    origin = (41.0318, 28.9417)
-    isCoordinateConverted = True
-    isOriginAtCenter = False
+        ===== =====
+        step 3: writeDisplacementHistoryForDRM (MPI is not supported for matchMethod='nearest' yet)
+        step 4: getEquivalentForces 
+        NOTE: After this step, move Cload.txt to the Abaqus working directory and run the complete analysis.
+        ('abaqus viewer odb=Istanbul_model_complete.odb script=plotAndSave.py' can be used to save the 
+        responses at designated points.) '''
+    # NOTE: Change the parameters in kwargs accordingly
+    kwargs = {
+        'dbPath': '/Volumes/CORSAIR/Hercules/Cases/Istanbul M6p81/2Hz_TACC/database/planedisplacements.hdf5',
+        'planeIndices': list(range(1, 12)), # The plane indices used for writeDisplacementHistoryForDRM.
+        'matchMethod': 'nearest', # can be 'nearest' or 'interpolated'
+        'allowance': 0.1, # unit: m.
+        'dispHistoryFileName': 'DispHistory.hdf5',
+        # ===== Abaqus model information =====
+        # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
+        # total length of the part (including the interested domain, DRM layer, and PML layer).
+        'lengths': {'x': 800, 'y': 800, 'z': 240},
+        'DRM_depth': 16, # The thickness of the DRM layer should be the mesh size used in the Abaqus model
+        'partName': 'Part-Soil',
+        'materialName': 'soil',
+        'jobName': 'Istanbul_model',
+        'subroutineFileName': 'PML3dUEL_Inhomogeneous.for',
+        'timeIncrement': 0.05, # unit: sec. This should be read from the site response file
+        'duration': 44.9, # unit: sec. This should be read from the site response file
+        'origin': (41.0318, 28.9417),
+        'isCoordinateConverted': True,
+        'isOriginAtCenter': True,
+        # ===== Rayleigh Damping =====
+        'alpha': 0,
+        'beta': 0,
+    }
+    kwargs['PML_depth'] = kwargs['DRM_depth']*5 # Could be ranged from 5 to 10 times of the thickness of DRM. But 5 is good enough.
     # ===== Hercules model information =====
-    HerculesInputFilePath = '../Cases/Abaqus Steel Building Model from Bulent/Istanbul_sim55/inputfiles/parameters_FullRegion_all_station_topo_final.in'
+    HerculesInputFilePath = 'inputfiles/parameters.in'
     HerculesData = hercules.getInputData(HerculesInputFilePath)
-    minVs = float(HerculesData['simulation_shear_velocity_min'])
+    kwargs['minVs'] = float(HerculesData['simulation_shear_velocity_min'])
     if stepNum == 1:
         # ===== Get material properties =====
-        centroid = [x/2 for x in lengths.values()]
-        youngsModulus, poissonsRatio, density = getMaterialPropertiesAtCentroid(centroid, origin=origin, minVs=minVs)
+        kwargs['centroid'] = [x/2 for x in kwargs['lengths'].values()]
+        youngsModulus, poissonsRatio, density = getMaterialPropertiesAtCentroid(**kwargs)
         # ===== Write data for creating Abaqus model =====
         # NOTE: All the lengths are the total length of the part (including the interested domain, DRM layer, and PML layer).
-        dataForAbaqusModel = {'length_x': lengths['x'], 'length_y': lengths['y'], 'length_z': lengths['z'], 
-            'DRM_depth': DRM_depth, 'PML_depth': PML_depth,
-            'partName': partName, 'materialName': materialName, 
-            'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density, 
-            'alpha': alpha, 'beta': beta, 
-            'jobName': jobName, 'subroutineFileName': subroutineFileName,
-            'timeIncrement': timeIncrement, 'duration': duration,
-            'isCoordinateConverted': isCoordinateConverted,
-            'isOriginAtCenter': isOriginAtCenter}
+        dataForAbaqusModel = {'length_'+axis: kwargs['lengths'][axis] for axis in ['x', 'y', 'z']} \
+            | {'youngsModulus': youngsModulus, 'poissonsRatio': poissonsRatio, 'density': density} \
+            | kwargs
         writeDataForCreatingAbaqusModel(dataForAbaqusModel)
         # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
         # After the _pre.inp file generated, move the _pre.inp file back.
@@ -142,23 +148,36 @@ def IstanbulModel(stepNum: int) -> None:
         # modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta, modelType='complete')
 
         # For heterogeneous model
+        prev_jobName = kwargs['jobName']
         # ===== Writing Material Properties =====
-        writeMaterialPropertiesForElements(jobName+'_static_pre', partName, origin, isCoordinateConverted=True, minVs=minVs)
-        writeMaterialPropertiesForPMLElements(jobName+'_static_pre', partName, origin, PML_depth, 
-            lengths, isCoordinateConverted=True, minVs=minVs)
+        kwargs['jobName'] += '_static_pre'
+        writeMaterialPropertiesForElements(**kwargs)
+        writeMaterialPropertiesForPMLElements(**kwargs)
         # ===== Modify the preliminary Abaqus input file =====
-        modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta, isHomogeneous=False, modelType='static')
-        modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta, isHomogeneous=False, modelType='complete')
+        kwargs['jobName'] = prev_jobName
+        modifyInput(**kwargs, isHomogeneous=False, modelType='static')
+        modifyInput(**kwargs, isHomogeneous=False, modelType='complete')
         # ===== Write nodeTable =====
-        writeNodeTable(jobName+'_static', partName, coordinateCorrection=True, AbaqusModelOrigin=origin, isCoordinateConverted=True)
+        # NOTE: This is the old method and has been replaced with the use of plane files.
+        # writeNodeTable(prev_jobName+'_static', partName, coordinateCorrection=True, AbaqusModelOrigin=origin, isCoordinateConverted=isCoordinateConverted)
         # NOTE: This node table should be used to specify stations in Hercules' input file and run Hercules analysis to generate station files.
     elif stepNum == 3:
+        # ===== Getting the displacement histories for DRM nodes =====
+        import timeit
+        numExec = 1
+        kwargs['jobName'] += '_complete'
+        print('Averaged Elapsed Time: %.2f secs' % 
+            (timeit.timeit(lambda: writeDisplacementHistoryForDRM(**kwargs), number=numExec)/numExec))
+    elif stepNum == 4:
+        kwargs.update({
+            'jobName': kwargs['jobName'] + '_complete',
+            'RFFileName': 'RF.txt',
+        })
         # ===== Compute the equivalent forces =====
-        stationFolder = '../Cases/Abaqus Steel Building Model from Bulent/Stations_flat/'
-        getEquivalentForces(jobName+'_complete', partName, stationFolder=stationFolder, RFFileName='RF.txt', isCoordinateConverted=True)
+        getEquivalentForces(**kwargs)
         # NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file.
     else:
-        raise ValueError('There are only 3 steps.')
+        raise ValueError('There are only 4 steps.')
     # NOTE: After completing the Abaqus analysis, open the .odb file and run plotAndSave.py in Abaqus to get the desired results.
     # Additionally and optionally, verification.py can be used to plot the results above and compare it with the ground truths (e.g., Hercules' station files).
     return
@@ -169,5 +188,5 @@ if __name__ == '__main__':
     parser.add_argument('--stepNum', '-s', type=int, help='The step number for execution.')
     stepNum = parser.parse_args().stepNum
     # /// Pick which model you want to perform
-    prospectusModel(stepNum)
-    # IstanbulModel(stepNum)
+    # prospectusModel(stepNum)
+    IstanbulModel(stepNum)

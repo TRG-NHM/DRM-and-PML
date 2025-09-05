@@ -6,7 +6,10 @@ def getHistoryOutputForDRMFromDispHistoryFile(dispHistoryFileName='DispHistory.c
     """ This function reads the displacement history and compute velocity and 
     acceleration histories. Finally, it returns a Dict that contains all 3 
     histories. """
-    df = pd.read_csv(dispHistoryFileName, index_col=0)
+    if dispHistoryFileName.endswith('.csv'):
+        df = pd.read_csv(dispHistoryFileName)
+    else:
+        df = pd.read_hdf(dispHistoryFileName)
     pointLabelList = df['pointLabel'].drop_duplicates().to_list()
     histories = {}
     for pointLabel in pointLabelList:

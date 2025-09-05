@@ -17,7 +17,8 @@ def getQuantityMatrixAtPoints(histories: dict[int, dict[str, np.array]], pointLa
 def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', elementTypeOnPart='C3D8', 
         DRM_ElSetName='DRM', inDRM_NSetName='inDRM', outDRM_NSetName='outDRM', stationFolder='Stations',
         dispHistoryFileName=None, RFFileName=None, isCoordinateConverted=False, isHomogeneous=False,
-        materialName=None, nodeTableFileName='nodeTable.csv', truncateTime=None, isResponseRecalculationNeeded=False) -> None:
+        materialName=None, nodeTableFileName='nodeTable.csv', truncateTime=None, isResponseRecalculationNeeded=False,
+        **kwargs) -> None:
     ''' getEquivalentForces write a file named `cLoadFileName` containing equivalent forces at DRM nodes. 
     If isHomogeneous==True, dispHistoryFileName and materialName must be defined. 
     If isHomogeneous==False, stationFolder and nodeTableFileName must be defined. '''
@@ -29,19 +30,19 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
     DRM_interiorNodeLabels = getLabelsInSet(jobName, setName=inDRM_NSetName, setType='node')
     DRM_exteriorNodeLabels = getLabelsInSet(jobName, setName=outDRM_NSetName, setType='node')
     DRM_sideNodeLabels = DRM_interiorNodeLabels + DRM_exteriorNodeLabels
-    print('Preliminaries: %f sec'%(time()-tic)) 
+    print('Preliminaries: %.2f sec'%(time()-tic)) 
     GaussQuadOrder = 2
     drmK, drmM, drmC = getGlobalMatrices(GaussQuadOrder, DRM_elements, DRM_sideNodeLabels, nodes, 
         isHomogeneous=isHomogeneous, jobName=jobName, materialName=materialName)
     # NOTE: when dispHistoryFileName is not None, it will turn to the old way to get history for DRM elements. 
     # Note that the old way does not consider whether the coordinate is converted.
-    print('Get global matrices: %f sec'%(time()-tic))
+    print('Get global matrices: %.2f sec'%(time()-tic))
     if dispHistoryFileName is None:
         timePoints, histories = getHistoryOutputForDRMFromStationFiles(stationFolder, isCoordinateConverted=isCoordinateConverted, 
             nodeTableFileName=nodeTableFileName, truncateTime=truncateTime, isResponseRecalculationNeeded=isResponseRecalculationNeeded)
     else:
         timePoints, histories = getHistoryOutputForDRMFromDispHistoryFile(dispHistoryFileName)
-    print('Get history output for DRM: %f sec'%(time()-tic))
+    print('Get history output for DRM: %.2f sec'%(time()-tic))
     ub = getQuantityMatrixAtPoints(histories, DRM_interiorNodeLabels, 'u')
     ue = getQuantityMatrixAtPoints(histories, DRM_exteriorNodeLabels, 'u')
     vb = getQuantityMatrixAtPoints(histories, DRM_interiorNodeLabels, 'v')
@@ -56,7 +57,7 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
     Meb = drmM[3*len(DRM_interiorNodeLabels):3*len(DRM_sideNodeLabels), :3*len(DRM_interiorNodeLabels)]
     Cbe = drmC[:3*len(DRM_interiorNodeLabels), 3*len(DRM_interiorNodeLabels):3*len(DRM_sideNodeLabels)]
     Ceb = drmC[3*len(DRM_interiorNodeLabels):3*len(DRM_sideNodeLabels), :3*len(DRM_interiorNodeLabels)]
-    print('Set up response vectors and K, M, and C matrices: %f sec'%(time()-tic))
+    print('Set up response vectors and K, M, and C matrices: %.2f sec'%(time()-tic))
     # Option 3: memory efficient way
     P_effs = np.zeros((3*len(DRM_sideNodeLabels), len(timePoints)))
     P_effs[:3*len(DRM_interiorNodeLabels), :] = -np.matmul(Mbe, ae) - np.matmul(Cbe, ve) - np.matmul(Kbe, ue) # P_eff_b
@@ -103,7 +104,7 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
             # staticStepDuration, RF[nodeLabel][int(directionIndex)] = [float(x) for x in lines[index+1].strip('\n').split(',')[-2:]]
     else:
         staticStepDuration = 0
-    print('Get reaction force: %f sec'%(time()-tic))
+    print('Get reaction force: %.2f sec'%(time()-tic))
     # /// Build Cload.txt
     lines = ['']*(3+len(timePoints))
     timePoints = [timePoint+staticStepDuration for timePoint in timePoints]
@@ -123,5 +124,5 @@ def getEquivalentForces(jobName: str, partName: str, cLoadFileName='Cload.txt', 
                     P_eff += RF[nodeLabel][DoF[direction]]
                 lines[3:] = ['%.4f,%e\n'%(timePoints[timeIndex], P) if P != 0 else '%.4f,0\n'%timePoints[timeIndex] for timeIndex, P in enumerate(P_eff)]
                 f.writelines(lines)
-    print('Build Cload.txt: %f sec'%(time()-tic))
+    print('Build Cload.txt: %.2f sec'%(time()-tic))
     return
