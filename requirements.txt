@@ -2,7 +2,7 @@ blosc2~=2.2.9
 certifi~=2024.7.4
 contourpy~=1.2.0
 cycler~=0.12.1
-fonttools~=4.44.0
+fonttools~>4.60.2
 kiwisolver~=1.4.5
 matplotlib~=3.8.1
 mpi4py~=3.1.5
