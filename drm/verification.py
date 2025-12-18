@@ -2,6 +2,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from func.getHistoryOutputForDRM import getFileWithoutUnnecessaryHeading
+# /// Use LaTeX for the text in the plots
+plt.rcParams.update({'text.usetex': True, 'font.family': 'serif', 'font.serif': ['Computer Modern'], 
+    'font.size': 12, 'font.weight': 'regular'})
+# /// Use bold Ariel font for the text in the plots (David's preference)
+# plt.rcParams.update({'font.family': 'Arial', 'font.size': 12, 'font.weight': 'bold'})
 
 def getStationList(folderPath: str, neglect_subfolder=True) -> list[str]:
     stationList = []
@@ -40,16 +45,15 @@ def getTimeHistoryFromStationAndAbaqusResult(stationFolder: str, AbaqusResultFol
 def plotAndSaveResults(locations: dict[str, dict[str, int]], 
     stations: dict[int, pd.DataFrame], AbaqusResults: dict[int, pd.DataFrame], 
     outputFolder: str = '', isCoordinateConverted: bool = False,
-    initialDisplacementCorrection: bool = True) -> None:
+    initialDisplacementCorrection: bool = True, dpi: float|str = 300,
+    plotFirst: str = 'Hercules') -> None:
     columnSeries = {'Displacement (m)': {'$u$': 'X|(m)', '$v$': 'Y-(m)', '$w$': 'Z.(m)'},
         'Velocity (m/s)': {r'$\dot{u}$': 'X|(m/s)', r'$\dot{v}$': 'Y-(m/s)', r'$\dot{w}$': 'Z.(m/s)'},
         'Acceleration (m/s$^2$)': {r'$\ddot{u}$': 'X|(m/s2)', r'$\ddot{v}$': 'Y-(m/s2)', r'$\ddot{w}$': 'Z.(m/s2)'}}
-    plt.rcParams.update({'font.size': 10, 'font.weight': 'regular'})
     for locationName, resultNum in locations.items():
         stationNum = resultNum['station']
         nodeLabel = resultNum['nodeLabel']
-        fig, axes = plt.subplots(3, 3, sharex='col', sharey='row')
-        fig.set_size_inches([8.5, 8.5])
+        fig, axes = plt.subplots(3, 3, sharex='col', sharey='row', figsize=(8.5, 8.5))
         times = AbaqusResults[nodeLabel].index
         if initialDisplacementCorrection:
             dispCols = ['X|(m)', 'Y-(m)', 'Z.(m)']
@@ -60,17 +64,24 @@ def plotAndSaveResults(locations: dict[str, dict[str, int]],
                 AbaqusResults[nodeLabel][column] = -AbaqusResults[nodeLabel][column]
         for i, (quantity, columns) in enumerate(columnSeries.items()):
             for j, (title, column) in enumerate(columns.items()):
-                axes[i, j].plot(stations[stationNum].index, stations[stationNum][column], 
-                    '-', linewidth=0.5, color='C1', label='Hercules')
-                axes[i, j].plot(times, AbaqusResults[nodeLabel][column], 
-                    '-', linewidth=0.5, color='C0', alpha=0.9, label='Abaqus')
+                if plotFirst == 'Hercules':
+                    axes[i, j].plot(stations[stationNum].index, stations[stationNum][column], 
+                        '-', linewidth=0.5, color='C1', label='Hercules')
+                    axes[i, j].plot(times, AbaqusResults[nodeLabel][column], 
+                        '-', linewidth=0.5, color='C0', alpha=0.9, label='Abaqus')
+                else: # plotFirst == 'Abaqus'
+                    axes[i, j].plot(times, AbaqusResults[nodeLabel][column], 
+                        '-', linewidth=0.5, label='Abaqus')
+                    axes[i, j].plot(stations[stationNum].index, stations[stationNum][column], 
+                        '-', linewidth=0.5, alpha=0.9, label='Hercules')
                 axes[i, j].set(title=title, xlim=(times[0], times[-1]))
                 axes[-1, j].set(xlabel='Time (s)')
             axes[i, 0].set(ylabel=quantity)
         handles, labels = axes[0, 0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc='upper right', bbox_to_anchor=[-0.09, -0.05, 1, 1], ncol=2, frameon=True, fancybox=False, edgecolor='0.5')
+        # fig.legend(handles, labels, loc='upper right', bbox_to_anchor=[-0.09, -0.05, 1, 1], ncol=2, frameon=True, fancybox=False, edgecolor='0.5')
+        fig.legend(handles, labels, loc='upper center', bbox_to_anchor=[0, -0.05, 1, 1], ncol=2, frameon=True, fancybox=True, edgecolor='0.8')
         os.makedirs(outputFolder, exist_ok=True) # Create the output folder if it doesn't exist
-        fig.savefig(os.path.join(outputFolder, locationName+'.pdf'))
+        fig.savefig(os.path.join(outputFolder, locationName+'.pdf'), dpi=dpi)
 
 if __name__ == '__main__':
     # DEBUGGING: Change the working directory to the folder of this script
@@ -87,4 +98,6 @@ if __name__ == '__main__':
     locations = {'Istanbul soil box top center': {'station': 0, 'nodeLabel': 29406}}
     truncateTime = [1.0, 45.9]
     stations, AbaqusResults = getTimeHistoryFromStationAndAbaqusResult(stationFolder, AbaqusResultFolder, truncateTime=truncateTime)
-    plotAndSaveResults(locations, stations, AbaqusResults, outputFolder='outputfiles/verification', isCoordinateConverted=True)
+    plotAndSaveResults(locations, stations, AbaqusResults, 
+        outputFolder='outputfiles/verification', 
+        isCoordinateConverted=True, plotFirst='Abaqus')

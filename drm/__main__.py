@@ -16,6 +16,7 @@ def prospectusModel(stepNum: int) -> None:
         step 3: writeDisplacementHistoryForDRM (MPI can be used in this step)
         step 4: getEquivalentForces 
         NOTE: After this step, move the .inp file and Cload.txt to the Abaqus working directory and run the .inp file '''
+    # NOTE: Change the parameters in kwargs accordingly
     kwargs = {
         'dbPath': '/Volumes/CORSAIR/Hercules/Cases/Istanbul M6p81/1Hz_Hoffman2/database/planedisplacements.hdf5',
         'planeIndices': list(range(133, 141)), # The plane indices used for writeDisplacementHistoryForDRM.
@@ -90,7 +91,7 @@ def IstanbulModel(stepNum: int) -> None:
         modified with maxVp in maxVpInPMLDomain.txt) to the Abaqus working directory and run the static 
         analysis and get RF.txt by running getReactionForce.py, then move RF.txt back.
         ('abaqus viewer odb=Istanbul_model_static.odb script=getReactionForce.py' can do the trick.)
-        ===== The following is no longer needed ==== 
+        ===== The following is no longer needed with the use of plane files ==== 
         In addition, the generated nodeTable.csv should be used to specify stations in Hercules' input 
         file and run Hercules analysis to generate station files.
         ===== =====
@@ -101,23 +102,40 @@ def IstanbulModel(stepNum: int) -> None:
         responses at designated points.) '''
     # NOTE: Change the parameters in kwargs accordingly
     kwargs = {
-        'dbPath': '/Volumes/CORSAIR/Hercules/Cases/Istanbul M6p81/2Hz_TACC/database/planedisplacements.hdf5',
-        'planeIndices': list(range(1, 12)), # The plane indices used for writeDisplacementHistoryForDRM.
+        'dbPath': '/Volumes/CORSAIR/Hercules/Cases/Istanbul M6p81/1Hz_Hoffman2/database/planedisplacements.hdf5',
+        # planeIndices are the plane indices used for writeDisplacementHistoryForDRM.
+        'planeIndices': list(range(12, 23)), # Case 1, 8-meter element size
+        # 'planeIndices': list(range(56, 67)), # Case 2, 8-meter element size
+        # 'planeIndices': list(range(100, 111)), # Case 3, 8-meter element size
+        # 'planeIndices': list(range(133, 141)), # Case 4, 50-meter element size
+        # === Version 3 ===
+        # 'planeIndices': list(range(1, 12)), # Case 1, 8-meter element size
+        # 'planeIndices': list(range(12, 23)), # Case 2, 8-meter element size
+        # 'planeIndices': list(range(23, 34)), # Case 3, 8-meter element size
+        # 'planeIndices': list(range(34, 45)), # Case 4, 8-meter element size
         'matchMethod': 'nearest', # can be 'nearest' or 'interpolated'
         'allowance': 0.1, # unit: m.
         'dispHistoryFileName': 'DispHistory.hdf5',
         # ===== Abaqus model information =====
         # NOTE: `lengths` is a dict with keys ('x', 'y', 'z') and the values are the 
         # total length of the part (including the interested domain, DRM layer, and PML layer).
-        'lengths': {'x': 800, 'y': 800, 'z': 240},
-        'DRM_depth': 16, # The thickness of the DRM layer should be the mesh size used in the Abaqus model
+        'lengths': {'x': 400, 'y': 400, 'z': 120},
+        'DRM_depth': 8, # The thickness of the DRM layer should be the mesh size used in the Abaqus model
         'partName': 'Part-Soil',
         'materialName': 'soil',
         'jobName': 'Istanbul_model',
         'subroutineFileName': 'PML3dUEL_Inhomogeneous.for',
-        'timeIncrement': 0.05, # unit: sec. This should be read from the site response file
+        'timeIncrement': 0.1, # unit: sec. This should be read from the site response file
         'duration': 44.9, # unit: sec. This should be read from the site response file
-        'origin': (41.0318, 28.9417),
+        'origin': (41.0318, 28.9417), # Case 1
+        # 'origin': (41.001970, 29.085491), # Case 2
+        # 'origin': (41.031450, 28.784960), # Case 3
+        # 'origin': (41.022314, 28.886133), # Case 4
+        # === Version 3 ===
+        # 'origin': (41.0318, 28.9417), # Case 1
+        # 'origin': (41.029468, 28.944425), # Case 2
+        # 'origin': (41.040714, 28.921306), # Case 3
+        # 'origin': (41.001530, 28.985787), # Case 4
         'isCoordinateConverted': True,
         'isOriginAtCenter': True,
         # ===== Rayleigh Damping =====
@@ -142,10 +160,10 @@ def IstanbulModel(stepNum: int) -> None:
         # NOTE: At this step, move 'dataForAbaqusModel.csv' to the Abaqus working directory and prepare the model.
         # After the _pre.inp file generated, move the _pre.inp file back.
     elif stepNum == 2:
-        # # For homogeneous model:
-        # # ===== Modify the preliminary Abaqus input file =====
-        # modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta, modelType='static')
-        # modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta, modelType='complete')
+        # For homogeneous model:
+        # ===== Modify the preliminary Abaqus input file =====
+        # modifyInput(**kwargs, modelType='static')
+        # modifyInput(**kwargs, modelType='complete')
 
         # For heterogeneous model
         prev_jobName = kwargs['jobName']
@@ -170,6 +188,7 @@ def IstanbulModel(stepNum: int) -> None:
             (timeit.timeit(lambda: writeDisplacementHistoryForDRM(**kwargs), number=numExec)/numExec))
     elif stepNum == 4:
         kwargs.update({
+            # 'isHomogeneous': True, # NOTE: Uncomment this line for homogeneous model
             'jobName': kwargs['jobName'] + '_complete',
             'RFFileName': 'RF.txt',
         })

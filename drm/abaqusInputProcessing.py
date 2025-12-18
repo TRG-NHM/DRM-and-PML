@@ -23,7 +23,7 @@ def modifyInput(jobName, partName, materialName, lengths, PML_depth, alpha, beta
     partLine = getLineIndex(lines, '*Part, name=%s\n'%partName)
     dummyElementLine = getLineIndex(lines, '*Element, type=%s\n'%dummyElementType, startLine=partLine+1)
     if isHomogeneous:
-        density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(materialName, fileName=jobName+'_pre.inp')[:3]
+        density, youngsModulus, poissonsRatio = getMaterialPropertiesFromInputFile(materialName, fileName=preInputFileName)[:3]
         lines[dummyElementLine] = '*Element, type=%s\n'%userElementType
         lines[dummyElementLine:dummyElementLine] = getUserElementLines(userElementType)
         endPartLine = getLineIndex(lines, '*End Part\n', startLine=partLine+1)
@@ -92,6 +92,9 @@ def getMaterialPropertiesAtCentroid(centroid, isAdjustmentNeeded=True, origin=No
     if minVs is not None and Vs < minVs:
         Vs = minVs
     poissonsRatio = (Vp**2 - 2*Vs**2)/(2*(Vp**2 - Vs**2)) # Ref: Eq. (5.34) in Geotechnical Earthquake Engineering (Kramer)
+    # NOTE: Negative Poisson's ratio is usually caused by the replacement of a very small Vs with minVs.
+    if poissonsRatio < 0:
+        raise ValueError('Computed Poisson\'s Ratio for %s is negative: %.4f'%(str(origin), poissonsRatio))
     G = rho*Vs**2 # Shear Modulus
     youngsModulus = 2*G*(1+poissonsRatio)
     return youngsModulus, poissonsRatio, rho

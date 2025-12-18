@@ -68,6 +68,9 @@ def writeMaterialPropertiesForElements(jobName, partName, origin, isCoordinateCo
         if minVs is not None and Vs < minVs:
             Vs = minVs
         poissonsRatio = (Vp**2 - 2*Vs**2)/(2*(Vp**2 - Vs**2)) # Ref: Eq. (5.34) in Geotechnical Earthquake Engineering (Kramer)
+        # NOTE: Negative Poisson's ratio is usually caused by the replacement of a very small Vs with minVs.
+        if poissonsRatio < 0:
+            raise ValueError('Computed Poisson\'s Ratio for %s is negative: %.4f'%(str(origin), poissonsRatio))
         G = rho*Vs**2 # Shear Modulus
         youngsModulus = 2*G*(1+poissonsRatio)
         lines += ['*Material, name=MATERIAL-%d\n'%eleLabel,
@@ -112,6 +115,9 @@ def writeMaterialPropertiesForPMLElements(jobName, partName, origin, PML_depth, 
         if Vp < minVp:
             minVp = Vp
         poissonsRatio = (Vp**2 - 2*Vs**2)/(2*(Vp**2 - Vs**2)) # Ref: Eq. (5.34) in Geotechnical Earthquake Engineering (Kramer)
+        # NOTE: Negative Poisson's ratio is usually caused by the replacement of a very small Vs with minVs.
+        if poissonsRatio < 0:
+            raise ValueError('Computed Poisson\'s Ratio for %s is negative: %.4f'%(str(origin), poissonsRatio))
         G = rho*Vs**2 # Shear Modulus
         youngsModulus = 2*G*(1+poissonsRatio)
         lines += ['*Element, type=%s, elset=EL-PML-ELEMENT-%d\n'%(userElementType, eleLabel),
@@ -122,7 +128,7 @@ def writeMaterialPropertiesForPMLElements(jobName, partName, origin, PML_depth, 
         f.writelines(lines)
     with open(maxVpFileName, 'w') as f:
         f.writelines(['MaxVp,MinVp\n', str(maxVp)+','+str(minVp)+'\n'])
-    return
+    return maxVp
 
 # if __name__ == '__main__':
 #     from func.getDataFromInputFile import getDataFromHerculesInputFile
