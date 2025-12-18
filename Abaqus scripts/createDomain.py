@@ -200,8 +200,10 @@ def createPreliminaryModel(lengths, DRM_depth, PML_depth, partName, materialName
 
     # ===== Output request settings =====
     # NOTE: Change the output request frequency. Be aware if the model is not using a default output request setting.
+    # NOTE 2: To generate field output at the exact time, set timeMarks=ON (not recommended)
     for fieldOutputRequest in model.fieldOutputRequests.values():
-        fieldOutputRequest.setValuesInStep(stepName=dynamicStep.name, numIntervals=50, timeMarks=OFF)
+        # fieldOutputRequest.setValuesInStep(stepName=dynamicStep.name, numIntervals=50, timeMarks=OFF)
+        fieldOutputRequest.setValuesInStep(stepName=dynamicStep.name, timeInterval=timeIncrement, timeMarks=OFF)
     for historyOutputRequest in model.historyOutputRequests.values():
         historyOutputRequest.setValues(frequency=1)
     # ===== Create history outputs =====

@@ -72,10 +72,10 @@ double* material_property_relative_V13(double x_input, double y_input, double z_
 
 	output = (double *)malloc(7 * sizeof(double));
 
-	double xmin = 388500.0;
-	double xmax = 414750.0;
-	double ymin = 4536400.0;
-	double ymax = 4546900.0;
+	double xmin = 0.0;
+	double xmax = 26250.0;
+	double ymin = 0.0;
+	double ymax = 10500.0;
 
 	// Modified by Clifford for consistent x and y inputs
 	x_input += xmin;
@@ -128564,7 +128564,7 @@ else {
 
 	 /* you can have any number of case statements */
 	default: /* Optional */
-		printf("Invalid material type\n");
+		printf("Invalid material type. Ignore this message if only linear materials are used.\n");
 	}
 
 	output[0] = zi_vs;
