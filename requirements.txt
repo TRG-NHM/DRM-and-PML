@@ -15,7 +15,7 @@ numexpr~=2.14.1
 numpy~=2.3.5
 packaging~=25.0
 pandas~=2.3.3
-pillow~>12.1.1
+pillow>=12.2.0
 platformdirs~=4.5.1
 py-cpuinfo~=9.0.0
 pyparsing~=3.2.5
